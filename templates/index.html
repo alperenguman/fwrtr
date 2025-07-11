@@ -31,6 +31,24 @@
                 </div>
             </div>
             
+            <!-- Entity Editor View -->
+            <div class="entity-editor" id="entityEditor" style="display: none;">
+                <div class="editor-header">
+                    <div class="editor-title">
+                        <span class="editor-entity-name" id="editorEntityName">Entity Name</span>
+                        <span class="editor-entity-type" id="editorEntityType">type/base_type</span>
+                    </div>
+                    <div class="editor-actions">
+                        <button class="editor-btn save-btn" id="saveEntityBtn">Save Changes</button>
+                        <button class="editor-btn cancel-btn" id="cancelEntityBtn">Cancel</button>
+                    </div>
+                </div>
+                
+                <div class="editor-content" id="editorContent">
+                    <!-- Editor cards will be inserted here -->
+                </div>
+            </div>
+            
             <div class="chat-input">
                 <div class="input-container">
                     <input type="text" id="messageInput" placeholder="Continue the story or ask about entities..." disabled>
@@ -42,7 +60,15 @@
         <div class="detail-pane" id="detailPane">
             <div class="detail-header">
                 <div class="detail-title" id="detailTitle">Entity Details</div>
-                <button class="close-detail" id="closeDetailButton">&times;</button>
+                <div class="detail-actions">
+                    <button class="edit-entity-btn" id="editEntityBtn" title="Edit Entity">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                    </button>
+                    <button class="close-detail" id="closeDetailButton">&times;</button>
+                </div>
             </div>
             
             <div class="detail-toggles">
