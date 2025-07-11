@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storywriter AI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">In This Scene</div>
+                <div class="scene-info" id="sceneInfo">Scene 1</div>
+                <div id="entityCount" class="loading">Loading...</div>
+            </div>
+            <div class="entity-list" id="entityList">
+            </div>
+        </div>
+
+        <div class="chat-container">
+            <div class="chat-header">
+                <h1>Storywriter AI</h1>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="message system">
+                    <div class="loading">Loading story...</div>
+                </div>
+            </div>
+            
+            <div class="chat-input">
+                <div class="input-container">
+                    <input type="text" id="messageInput" placeholder="Continue the story or ask about entities..." disabled>
+                    <button class="send-btn" id="sendButton" disabled>Send</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="detail-pane" id="detailPane">
+            <div class="detail-header">
+                <div class="detail-title" id="detailTitle">Entity Details</div>
+                <button class="close-detail" id="closeDetailButton">&times;</button>
+            </div>
+            
+            <div class="detail-toggles">
+                <h4>Show/Hide Sections</h4>
+                <div class="toggle-buttons">
+                    <button class="toggle-btn active" data-section="form">Form</button>
+                    <button class="toggle-btn active" data-section="function">Function</button>
+                    <button class="toggle-btn active" data-section="character">Character</button>
+                    <button class="toggle-btn active" data-section="goal">Goal</button>
+                    <button class="toggle-btn active" data-section="history">History</button>
+                    <button class="toggle-btn active" data-section="custom">Custom</button>
+                </div>
+            </div>
+            
+            <div class="detail-content" id="detailContent">
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
