@@ -71,14 +71,14 @@ if (typeof window.storywriterApp === 'undefined') {
         console.log('Entities loaded:', entities);
         entityData = {};
         entities.forEach(entity => {
-            entityData[entity.id] = entity;
+            entityData[entity.entity_id] = entity;
         });
         updateEntityList();
         generateInitialStory();
     });
 
     socket.on('entity_updated', function(entity) {
-        entityData[entity.id] = entity;
+        entityData[entity.entity_id] = entity;
         updateEntityInUI(entity);
         addSystemMessage(entity.name + ' has been updated');
     });
@@ -90,6 +90,33 @@ if (typeof window.storywriterApp === 'undefined') {
     socket.on('error', function(error) {
         console.error('Socket error:', error);
         addSystemMessage('Error: ' + error.message);
+    });
+
+    // Handle attribute system responses
+    socket.on('class_attributes_loaded', function(data) {
+        const { entity_id, available_attributes, current_attributes } = data;
+        const inputField = document.querySelector('.attribute-filter[data-entity-id="' + entity_id + '"]');
+        const attributesContainer = document.querySelector('.current-attributes[data-entity-id="' + entity_id + '"]');
+        
+        if (inputField) {
+            inputField._availableAttributes = available_attributes;
+            inputField._currentAttributes = current_attributes;
+        }
+        
+        if (attributesContainer) {
+            updateAttributesDisplay(entity_id, current_attributes);
+        }
+    });
+    
+    socket.on('attribute_updated', function(data) {
+        const { entity_id, attributes } = data;
+        updateAttributesDisplay(entity_id, attributes);
+        
+        // Update available attributes for input field
+        const inputField = document.querySelector('.attribute-filter[data-entity-id="' + entity_id + '"]');
+        if (inputField) {
+            inputField._currentAttributes = attributes;
+        }
     });
 
     // UI Functions
@@ -118,8 +145,8 @@ if (typeof window.storywriterApp === 'undefined') {
     function processEntityLinks(text) {
         for (const entityId in entityData) {
             const entity = entityData[entityId];
-            const regex = new RegExp('\\b' + entity.name + '\\b', 'gi');
-            text = text.replace(regex, '<span class="entity ' + entity.type + '" data-id="' + entityId + '">' + entity.name + '</span>');
+            const regex = new RegExp('\\b' + entity.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi');
+            text = text.replace(regex, '<span class="entity ' + entity.base_type + '" data-id="' + entityId + '">' + entity.name + '</span>');
         }
         return text;
     }
@@ -132,14 +159,27 @@ if (typeof window.storywriterApp === 'undefined') {
         entityCount.textContent = entities.length + ' entities';
         
         entityList.innerHTML = '';
+        
+        // Group entities by base type
+        const groupedEntities = {};
         entities.forEach(function(entity) {
-            const entityDiv = document.createElement('div');
-            entityDiv.className = 'entity-item ' + entity.type;
-            entityDiv.innerHTML = '<div class="entity-name">' + entity.name + '</div><div class="entity-type">' + entity.type + '</div>';
-            entityDiv.addEventListener('click', function() {
-                showEntityDetails(entity.id);
+            if (!groupedEntities[entity.base_type]) {
+                groupedEntities[entity.base_type] = [];
+            }
+            groupedEntities[entity.base_type].push(entity);
+        });
+        
+        // Display entities grouped by type
+        Object.keys(groupedEntities).sort().forEach(function(baseType) {
+            groupedEntities[baseType].forEach(function(entity) {
+                const entityDiv = document.createElement('div');
+                entityDiv.className = 'entity-item ' + entity.base_type;
+                entityDiv.innerHTML = '<div class="entity-name">' + entity.name + '</div><div class="entity-type">' + entity.base_type + (entity.type !== entity.base_type ? ' (' + entity.type + ')' : '') + '</div>';
+                entityDiv.addEventListener('click', function() {
+                    showEntityDetails(entity.entity_id);
+                });
+                entityList.appendChild(entityDiv);
             });
-            entityList.appendChild(entityDiv);
         });
     }
 
@@ -156,21 +196,21 @@ if (typeof window.storywriterApp === 'undefined') {
         content += '<div class="beat-boundary" data-beat-id="1:b1">';
         content += '<p><strong>Welcome to your story!</strong> The scene is set with:</p><br>';
         
-        const sarah = entities.find(function(e) { return e.type === 'actor'; });
-        const rod = entities.find(function(e) { return e.type === 'object'; });
-        const dock = entities.find(function(e) { return e.type === 'location'; });
-        const dialogue = entities.find(function(e) { return e.type === 'dialogue'; });
-        const time = entities.find(function(e) { return e.type === 'time'; });
+        const sarah = entities.find(function(e) { return e.base_type === 'actor' && e.name.includes('Sarah'); });
+        const rod = entities.find(function(e) { return e.base_type === 'object' && e.name.includes('Rod'); });
+        const dock = entities.find(function(e) { return e.base_type === 'location'; });
+        const time = entities.find(function(e) { return e.base_type === 'time'; });
+        const thought = entities.find(function(e) { return e.base_type === 'thought'; });
         
-        console.log('Found entities:', { sarah: sarah, rod: rod, dock: dock, dialogue: dialogue, time: time });
+        console.log('Found entities:', { sarah: sarah, rod: rod, dock: dock, time: time, thought: thought });
         
-        if (sarah && rod && dock && dialogue && time) {
+        if (sarah && rod && dock && time && thought) {
             content += '<p>';
-            content += 'As the <span class="entity ' + time.type + '" data-id="' + time.id + '">' + time.name.toLowerCase() + '</span> ';
-            content += 'approached, <span class="entity ' + sarah.type + '" data-id="' + sarah.id + '">' + sarah.name + '</span> ';
-            content += 'stood on the <span class="entity ' + dock.type + '" data-id="' + dock.id + '">' + dock.name.toLowerCase() + '</span>, ';
-            content += 'gripping her <span class="entity ' + rod.type + '" data-id="' + rod.id + '">' + rod.name.toLowerCase() + '</span>. ';
-            content += 'She whispered into the mist: <span class="entity ' + dialogue.type + '" data-id="' + dialogue.id + '">"' + dialogue.name + '?"</span>';
+            content += 'As the <span class="entity ' + time.base_type + '" data-id="' + time.entity_id + '">' + time.name.toLowerCase() + '</span> ';
+            content += 'approached, <span class="entity ' + sarah.base_type + '" data-id="' + sarah.entity_id + '">' + sarah.name + '</span> ';
+            content += 'stood on the <span class="entity ' + dock.base_type + '" data-id="' + dock.entity_id + '">' + dock.name.toLowerCase() + '</span>, ';
+            content += 'gripping her <span class="entity ' + rod.base_type + '" data-id="' + rod.entity_id + '">' + rod.name.toLowerCase() + '</span>. ';
+            content += 'Her mind raced with the <span class="entity ' + thought.base_type + '" data-id="' + thought.entity_id + '">' + thought.name.toLowerCase() + '</span>.';
             content += '</p>';
         } else {
             content += '<p>Loading story entities...</p>';
@@ -193,32 +233,46 @@ if (typeof window.storywriterApp === 'undefined') {
 
         document.getElementById('detailTitle').textContent = entity.name;
         
-        const savedOrder = sectionOrder[entityId] || ['form', 'function', 'character', 'goal', 'history', 'custom'];
+        const savedOrder = sectionOrder[entityId] || ['form', 'function', 'character', 'goal', 'history', 'attributes'];
         let content = '';
         
         savedOrder.forEach(function(section) {
-            if (section === 'custom') {
-                if (entity.custom_attributes) {
-                    const customAttrs = JSON.parse(entity.custom_attributes);
-                    if (Object.keys(customAttrs).length > 0) {
-                        content += '<div class="detail-section" data-section="custom">';
-                        content += '<h3>Custom Attributes</h3>';
-                        for (const key in customAttrs) {
-                            const value = customAttrs[key];
-                            const displayValue = typeof value === 'object' ? JSON.stringify(value) : value;
-                            content += '<div class="custom-attribute"><span class="attr-key">' + key + ':</span> <span class="attr-value">' + displayValue + '</span></div>';
-                        }
-                        content += '</div>';
-                    }
-                }
+            if (section === 'attributes') {
+                // Show attributes system
+                content += '<div class="detail-section" data-section="attributes">';
+                content += '<h3>Attributes</h3>';
+                content += '<div class="class-type-display">';
+                content += '<span class="specific-class">' + (entity.type || 'Unknown') + '</span>';
+                content += '<span class="class-separator">/</span>';
+                content += '<span class="base-class">' + (entity.base_type || 'Unknown') + '</span>';
+                content += '</div>';
+                
+                // Attribute input and filtering
+                content += '<div class="attribute-input-container">';
+                content += '<input type="text" class="attribute-filter" placeholder="Search or add attribute..." data-entity-id="' + entityId + '">';
+                content += '<div class="attribute-suggestions" style="display: none;"></div>';
+                content += '</div>';
+                
+                // Current attributes display
+                content += '<div class="current-attributes" data-entity-id="' + entityId + '">';
+                content += '<div class="loading-attributes">Loading attributes...</div>';
+                content += '</div>';
+                
+                content += '</div>';
             } else {
                 const description = entity[section + '_description'];
+                const descriptionDetail = entity[section + '_description_detail'];
                 const tags = entity[section + '_tags'];
                 
                 if (description) {
                     content += '<div class="detail-section" data-section="' + section + '">';
                     content += '<h3>' + section.charAt(0).toUpperCase() + section.slice(1) + '</h3>';
                     content += '<p>' + description + '</p>';
+                    if (descriptionDetail) {
+                        content += '<div class="detail-section-detail">';
+                        content += '<p><em>' + descriptionDetail + '</em></p>';
+                        content += '</div>';
+                    }
                     if (tags) {
                         const tagArray = JSON.parse(tags);
                         content += '<div class="tags">';
@@ -235,7 +289,149 @@ if (typeof window.storywriterApp === 'undefined') {
         document.getElementById('detailContent').innerHTML = content;
         document.getElementById('detailPane').classList.add('active');
         
+        // Load attributes after content is inserted
+        if (savedOrder.includes('attributes')) {
+            loadEntityAttributes(entityId);
+            setupAttributeInput(entityId);
+        }
+        
         initializeDragAndDrop(entityId);
+    }
+
+    function loadEntityAttributes(entityId) {
+        const entity = entityData[entityId];
+        if (!entity) return;
+        
+        // Get available attributes for this entity's class hierarchy
+        socket.emit('get_class_attributes', {
+            class_id: entity.class_id,
+            entity_id: entityId
+        });
+    }
+    
+    function setupAttributeInput(entityId) {
+        const inputField = document.querySelector('.attribute-filter[data-entity-id="' + entityId + '"]');
+        const suggestionsDiv = document.querySelector('.attribute-suggestions');
+        
+        if (!inputField || !suggestionsDiv) return;
+        
+        let availableAttributes = [];
+        let currentAttributes = {};
+        
+        // Handle input for filtering and new attribute creation
+        inputField.addEventListener('input', function(e) {
+            const value = e.target.value.toLowerCase();
+            
+            if (value.length === 0) {
+                suggestionsDiv.style.display = 'none';
+                return;
+            }
+            
+            // Filter available attributes
+            const filtered = availableAttributes.filter(attr => 
+                attr.toLowerCase().includes(value) && !currentAttributes.hasOwnProperty(attr)
+            );
+            
+            // Show suggestions
+            if (filtered.length > 0) {
+                suggestionsDiv.innerHTML = filtered.map(attr => 
+                    '<div class="attribute-suggestion" data-attribute="' + attr + '">' + attr + '</div>'
+                ).join('');
+                suggestionsDiv.style.display = 'block';
+            } else {
+                suggestionsDiv.innerHTML = '<div class="attribute-suggestion new-attribute" data-attribute="' + e.target.value + '">Create new: ' + e.target.value + '</div>';
+                suggestionsDiv.style.display = 'block';
+            }
+        });
+        
+        // Handle enter key for new attributes
+        inputField.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const value = e.target.value.trim();
+                if (value && !currentAttributes.hasOwnProperty(value)) {
+                    addAttributeToEntity(entityId, value, '');
+                    e.target.value = '';
+                    suggestionsDiv.style.display = 'none';
+                }
+            }
+        });
+        
+        // Handle suggestion clicks
+        suggestionsDiv.addEventListener('click', function(e) {
+            if (e.target.classList.contains('attribute-suggestion')) {
+                const attribute = e.target.dataset.attribute;
+                addAttributeToEntity(entityId, attribute, '');
+                inputField.value = '';
+                suggestionsDiv.style.display = 'none';
+            }
+        });
+        
+        // Store references for socket response
+        inputField._availableAttributes = availableAttributes;
+        inputField._currentAttributes = currentAttributes;
+    }
+    
+    function addAttributeToEntity(entityId, attributeKey, attributeValue) {
+        socket.emit('add_entity_attribute', {
+            entity_id: entityId,
+            attribute_key: attributeKey,
+            attribute_value: attributeValue
+        });
+    }
+    
+    function updateAttributeValue(entityId, attributeKey, attributeValue) {
+        socket.emit('update_entity_attribute', {
+            entity_id: entityId,
+            attribute_key: attributeKey,
+            attribute_value: attributeValue
+        });
+    }
+    
+    function removeAttributeFromEntity(entityId, attributeKey) {
+        socket.emit('remove_entity_attribute', {
+            entity_id: entityId,
+            attribute_key: attributeKey
+        });
+    }
+
+    function updateAttributesDisplay(entityId, attributes) {
+        const container = document.querySelector('.current-attributes[data-entity-id="' + entityId + '"]');
+        if (!container) return;
+        
+        if (Object.keys(attributes).length === 0) {
+            container.innerHTML = '<div class="no-attributes">No attributes set</div>';
+            return;
+        }
+        
+        let html = '';
+        Object.keys(attributes).forEach(key => {
+            const value = attributes[key];
+            html += '<div class="attribute-item" data-key="' + key + '">';
+            html += '<div class="attribute-key">' + key + '</div>';
+            html += '<input type="text" class="attribute-value" value="' + value + '" data-entity-id="' + entityId + '" data-key="' + key + '">';
+            html += '<button class="remove-attribute" data-entity-id="' + entityId + '" data-key="' + key + '">×</button>';
+            html += '</div>';
+        });
+        
+        container.innerHTML = html;
+        
+        // Add event listeners for value changes and removal
+        container.querySelectorAll('.attribute-value').forEach(input => {
+            input.addEventListener('blur', function() {
+                updateAttributeValue(this.dataset.entityId, this.dataset.key, this.value);
+            });
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    this.blur();
+                }
+            });
+        });
+        
+        container.querySelectorAll('.remove-attribute').forEach(button => {
+            button.addEventListener('click', function() {
+                removeAttributeFromEntity(this.dataset.entityId, this.dataset.key);
+            });
+        });
     }
 
     function showSceneDetails(sceneId) {
@@ -292,10 +488,10 @@ if (typeof window.storywriterApp === 'undefined') {
         if (document.getElementById('detailPane').classList.contains('active')) {
             const currentEntityName = document.getElementById('detailTitle').textContent;
             if (entity.name === currentEntityName) {
-                showEntityDetails(entity.id);
+                showEntityDetails(entity.entity_id);
                 
                 setTimeout(function() {
-                    const attrElements = document.querySelectorAll('.custom-attribute');
+                    const attrElements = document.querySelectorAll('.detail-section');
                     attrElements.forEach(function(el) {
                         el.classList.add('updated');
                     });
@@ -325,7 +521,7 @@ if (typeof window.storywriterApp === 'undefined') {
             }
             
             if (e.target.classList.contains('entity')) {
-                const entityId = e.target.dataset.id;
+                const entityId = parseInt(e.target.dataset.id);
                 showEntityDetails(entityId);
                 e.stopPropagation();
                 return;
