@@ -1,5 +1,6 @@
 -- STORYWRITER DATABASE WITH EXPLICIT COLUMN RELATIONSHIPS
 -- Core principle: Everything is an entity. Relationships connect states of entities.
+-- Extended with story generation and AI agent tracking
 
 -- Class system for dynamic entity attributes and constraints
 CREATE TABLE classes (
@@ -122,6 +123,86 @@ CREATE TABLE representations (
     FOREIGN KEY (state_id) REFERENCES states(state_id)
 );
 
+-- NEW: Stories table for generated story content with versioning
+CREATE TABLE stories (
+    story_entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    story_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    scene_id TEXT NOT NULL,
+    beat_id TEXT NOT NULL,
+    
+    -- Story content and metadata
+    text_content TEXT NOT NULL, -- The actual generated story text
+    variant TEXT NOT NULL, -- 'roll1', 'roll2', 'roll3', 'user_input', 'final', etc.
+    revision TEXT NOT NULL, -- 'rev1', 'rev2', 'rev3', etc.
+    
+    -- Quality metrics
+    quality_score REAL, -- Evaluated quality score (0.0-1.0)
+    continuity_score REAL, -- How well it maintains story continuity
+    
+    -- Metadata
+    character_count INTEGER,
+    
+    -- Status and workflow
+    status TEXT DEFAULT 'draft', -- 'draft', 'reviewed', 'approved', 'published'
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- NEW: Agents table for agent definitions and configuration
+CREATE TABLE agents (
+    agent_id TEXT PRIMARY KEY, -- Unique identifier for agent (e.g., 'prep_agent_v1', 'generator_main')
+    agent_type TEXT NOT NULL, -- 'PrepAgent', 'GeneratorAgent', 'EvalAgent', 'ContinuityGuard'
+    agent_version TEXT NOT NULL, -- Version of the agent (v1.0, v2.1, etc.)
+    agent_name TEXT, -- Human-readable name
+    agent_description TEXT, -- What this agent does
+    
+    -- Agent configuration
+    agent_instructions TEXT, -- Core instructions/prompt for this agent
+    agent_function_calls JSON, -- Available function calls/tools for this agent
+    model TEXT, -- Which AI model this agent uses
+    
+    -- Status
+    is_active BOOLEAN DEFAULT TRUE, -- Is this agent currently active?
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- NEW: Agent executions table for execution tracking
+CREATE TABLE agent_executions (
+    agent_execution_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    
+    -- Agent reference
+    agent_id TEXT NOT NULL, -- References agents.agent_id
+    
+    -- Execution context
+    story_id TEXT NOT NULL,
+    story_entry_id INTEGER, -- Which story entry this relates to
+    
+    -- Input/Output
+    source_text TEXT, -- Input text/prompt the agent received
+    output_text TEXT, -- Text output produced by the agent
+    
+    -- Timing
+    request_time TIMESTAMP NOT NULL,
+    output_time TIMESTAMP, -- When output was received (NULL if still processing)
+    processing_duration_ms INTEGER, -- How long processing took in milliseconds
+    
+    -- Results and metrics
+    status_message TEXT, -- Success message or error details
+    
+    -- Cost tracking
+    tokens INTEGER, -- Number of tokens consumed
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id),
+    FOREIGN KEY (story_entry_id) REFERENCES stories(story_entry_id)
+);
+
 -- Performance indexes
 CREATE INDEX idx_classes_type ON classes(type);
 CREATE INDEX idx_classes_parent ON classes(parent_class_id);
@@ -150,6 +231,26 @@ CREATE INDEX idx_relationships_description ON relationships(description);
 CREATE INDEX idx_representations_relationship ON representations(relationship_id);
 CREATE INDEX idx_representations_state ON representations(state_id);
 CREATE INDEX idx_representations_type ON representations(type);
+
+-- NEW: Indexes for stories table
+CREATE INDEX idx_stories_story_id ON stories(story_id);
+CREATE INDEX idx_stories_scene ON stories(scene_id);
+CREATE INDEX idx_stories_beat ON stories(beat_id);
+CREATE INDEX idx_stories_variant ON stories(variant);
+CREATE INDEX idx_stories_revision ON stories(revision);
+CREATE INDEX idx_stories_status ON stories(status);
+CREATE INDEX idx_stories_created_at ON stories(created_at);
+
+-- NEW: Indexes for agents table
+CREATE INDEX idx_agents_type ON agents(agent_type);
+CREATE INDEX idx_agents_version ON agents(agent_version);
+CREATE INDEX idx_agents_is_active ON agents(is_active);
+
+-- NEW: Indexes for agent_executions table
+CREATE INDEX idx_agent_executions_agent_id ON agent_executions(agent_id);
+CREATE INDEX idx_agent_executions_story_id ON agent_executions(story_id);
+CREATE INDEX idx_agent_executions_request_time ON agent_executions(request_time);
+CREATE INDEX idx_agent_executions_story_entry ON agent_executions(story_entry_id);
 
 -- Base classes for entity types
 INSERT INTO classes (type, parent_class_id, details, attributes, constraints) VALUES 
