@@ -17,28 +17,30 @@ except ImportError:
 class BaseAgent:
     """Base class for all agents - loads configuration dynamically from database and manages LLM client"""
     
-    def __init__(self, agent_id: str, db_connection):
-        self.agent_id = agent_id
+    def __init__(self, agent_type: str, agent_task_id: int, db_connection):
+        self.agent_type = agent_type
+        self.agent_task_id = agent_task_id
         self.db = db_connection
         self.config = self._load_config()
         self.llm_client = self._init_llm_client()
         self.execution_id = None
         
     def _load_config(self) -> Dict[str, Any]:
-        """Load agent configuration from database"""
+        """Load agent configuration from database based on type and task_id"""
         cursor = self.db.execute("""
-            SELECT agent_type, agent_version, agent_name, agent_description,
+            SELECT agent_id, agent_type, agent_task_id, agent_name, agent_description,
                    agent_instructions, agent_function_calls, model, is_active
-            FROM agents WHERE agent_id = ? AND is_active = TRUE
-        """, (self.agent_id,))
+            FROM agents WHERE agent_type = ? AND agent_task_id = ? AND is_active = TRUE
+        """, (self.agent_type, self.agent_task_id))
         
         row = cursor.fetchone()
         if not row:
-            raise ValueError(f"Agent {self.agent_id} not found or inactive")
+            raise ValueError(f"Agent {self.agent_type} task {self.agent_task_id} not found or inactive")
             
         return {
+            'agent_id': row['agent_id'],
             'type': row['agent_type'],
-            'version': row['agent_version'],
+            'task_id': row['agent_task_id'],
             'name': row['agent_name'],
             'description': row['agent_description'],
             'instructions': row['agent_instructions'],
@@ -54,7 +56,7 @@ class BaseAgent:
             
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
-                print(f"Warning: No OPENAI_API_KEY found for {self.agent_id}")
+                print(f"Warning: No OPENAI_API_KEY found for {self.agent_type}:{self.agent_task_id}")
                 return None
             
             base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
@@ -67,10 +69,10 @@ class BaseAgent:
             return client
             
         except ImportError:
-            print(f"Warning: OpenAI library not installed for {self.agent_id}")
+            print(f"Warning: OpenAI library not installed for {self.agent_type}:{self.agent_task_id}")
             return None
         except Exception as e:
-            print(f"Warning: Failed to initialize LLM client for {self.agent_id}: {e}")
+            print(f"Warning: Failed to initialize LLM client for {self.agent_type}:{self.agent_task_id}: {e}")
             return None
     
     def call_llm(self, messages: List[Dict], **kwargs) -> str:
@@ -105,26 +107,26 @@ class BaseAgent:
             # Add any additional parameters
             call_params.update({k: v for k, v in kwargs.items() if k not in ['max_tokens', 'temperature']})
             
-            print(f"[{self.agent_id}] Making LLM call:")
+            print(f"[{self.agent_type}:{self.agent_task_id}] Making LLM call:")
             print(f"  Model: {call_params['model']}")
             print(f"  Max tokens: {call_params['max_tokens']}")
             print(f"  Temperature: {call_params['temperature']}")
             print(f"  Message length: {len(str(messages))} chars")
             print(f"  First 200 chars: {str(messages)[:200]}...")
             
-            print(f"[{self.agent_id}] Sending request to LLM...")
+            print(f"[{self.agent_type}:{self.agent_task_id}] Sending request to LLM...")
             response = self.llm_client.chat.completions.create(**call_params)
             
             result = response.choices[0].message.content
-            print(f"[{self.agent_id}] LLM response received:")
+            print(f"[{self.agent_type}:{self.agent_task_id}] LLM response received:")
             print(f"  Response length: {len(result)} chars")
             print(f"  First 200 chars: {result[:200]}...")
             
             return result
             
         except Exception as e:
-            print(f"[{self.agent_id}] LLM call failed: {str(e)}")
-            raise Exception(f"LLM call failed for {self.agent_id}: {str(e)}")
+            print(f"[{self.agent_type}:{self.agent_task_id}] LLM call failed: {str(e)}")
+            raise Exception(f"LLM call failed for {self.agent_type}:{self.agent_task_id}: {str(e)}")
     
     def call_llm_with_fallback(self, messages: List[Dict], fallback_func, **kwargs) -> str:
         """
@@ -139,13 +141,13 @@ class BaseAgent:
             String response from LLM or fallback
         """
         try:
-            print(f"[{self.agent_id}] Attempting LLM call with fallback...")
+            print(f"[{self.agent_type}:{self.agent_task_id}] Attempting LLM call with fallback...")
             return self.call_llm(messages, **kwargs)
         except Exception as e:
-            print(f"[{self.agent_id}] LLM call failed: {e}, using fallback")
-            print(f"[{self.agent_id}] Executing fallback function...")
+            print(f"[{self.agent_type}:{self.agent_task_id}] LLM call failed: {e}, using fallback")
+            print(f"[{self.agent_type}:{self.agent_task_id}] Executing fallback function...")
             result = fallback_func()
-            print(f"[{self.agent_id}] Fallback completed, returned: {type(result)} with {len(str(result))} chars")
+            print(f"[{self.agent_type}:{self.agent_task_id}] Fallback completed, returned: {type(result)} with {len(str(result))} chars")
             return result
     
     def _start_execution(self, story_id: str, story_entry_id: Optional[int] = None, 
@@ -158,12 +160,12 @@ class BaseAgent:
                 INSERT INTO agent_executions 
                 (agent_id, story_id, story_entry_id, source_text, request_time)
                 VALUES (?, ?, ?, ?, ?)
-            """, (self.agent_id, story_id, story_entry_id, source_text, datetime.now().isoformat()))
+            """, (self.config['agent_id'], story_id, story_entry_id, source_text, datetime.now().isoformat()))
             
             return cursor.lastrowid
         except Exception as e:
             # Graceful fallback if execution tracking fails
-            print(f"Warning: Could not start execution tracking for {self.agent_id}: {e}")
+            print(f"Warning: Could not start execution tracking for {self.agent_type}:{self.agent_task_id}: {e}")
             return self.execution_id
     
     def _finish_execution(self, output_text: str, status_message: str = "Success", 
@@ -182,11 +184,11 @@ class BaseAgent:
                     status_message = ?, tokens = ?
                 WHERE agent_id = ? AND request_time >= datetime('now', '-1 minute')
             """, (output_text, datetime.now().isoformat(), processing_duration,
-                  status_message, tokens, self.agent_id))
+                  status_message, tokens, self.config['agent_id']))
             
             self.db.commit()
         except Exception as e:
-            print(f"Warning: Could not finish execution tracking for {self.agent_id}: {e}")
+            print(f"Warning: Could not finish execution tracking for {self.agent_type}:{self.agent_task_id}: {e}")
     
     def execute(self, **kwargs) -> Dict[str, Any]:
         """Main execution method - override in subclasses"""

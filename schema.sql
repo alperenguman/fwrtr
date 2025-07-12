@@ -51,6 +51,18 @@ CREATE TABLE entities (
     FOREIGN KEY (class_id) REFERENCES classes(class_id)
 );
 
+-- Entity aliases for name resolution (Michael -> Mike, Tom -> The Accountant, etc.)
+CREATE TABLE entity_aliases (
+    alias_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_id INTEGER NOT NULL,
+    alias_name TEXT NOT NULL,
+    alias_type TEXT DEFAULT 'manual', -- 'manual', 'auto_generated', 'nickname', 'title', etc.
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (entity_id) REFERENCES entities(entity_id) ON DELETE CASCADE,
+    UNIQUE(entity_id, alias_name) -- Prevent duplicate aliases for same entity
+);
+
 -- Create states table for tracking contextual state changes
 CREATE TABLE states (
     state_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,21 +165,23 @@ CREATE TABLE stories (
 -- NEW: Agents table for agent definitions and configuration
 CREATE TABLE agents (
     agent_id INTEGER PRIMARY KEY AUTOINCREMENT, -- ✅ Changed to auto-incrementing integer
-    agent_type TEXT NOT NULL, -- 'PrepAgent', 'GeneratorAgent', 'EvalAgent', 'ContinuityGuard'
-    agent_version TEXT NOT NULL, -- Version of the agent (v1.0, v2.1, etc.)
+    agent_type TEXT NOT NULL, -- 'PrepAgent', 'GeneratorAgent', 'EvalAgent', 'ContinuityGuard', 'EntityAgent'
+    agent_task_id INTEGER NOT NULL, -- Task ID within the agent type (1=raw extraction, 2=classification, etc.)
     agent_name TEXT, -- Human-readable name
-    agent_description TEXT, -- What this agent does
+    agent_description TEXT, -- What this specific task does
     
     -- Agent configuration
-    agent_instructions TEXT, -- Core instructions/prompt for this agent
-    agent_function_calls JSON, -- Available function calls/tools for this agent
-    model TEXT, -- Which AI model this agent uses
+    agent_instructions TEXT, -- Core instructions/prompt for this specific task
+    agent_function_calls JSON, -- Available function calls/tools for this task
+    model TEXT, -- Which AI model this specific task uses
     
     -- Status
-    is_active BOOLEAN DEFAULT TRUE, -- Is this agent currently active?
+    is_active BOOLEAN DEFAULT TRUE, -- Is this agent task currently active?
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    UNIQUE(agent_type, agent_task_id) -- Prevent duplicate task IDs for same agent type
 );
 
 -- NEW: Agent executions table for execution tracking
@@ -215,6 +229,10 @@ CREATE INDEX idx_entities_name ON entities(name);
 CREATE INDEX idx_entities_form_tags ON entities(form_tags);
 CREATE INDEX idx_entities_function_tags ON entities(function_tags);
 
+CREATE INDEX idx_entity_aliases_entity_id ON entity_aliases(entity_id);
+CREATE INDEX idx_entity_aliases_alias_name ON entity_aliases(alias_name);
+CREATE INDEX idx_entity_aliases_type ON entity_aliases(alias_type);
+
 CREATE INDEX idx_states_story ON states(story_id);
 CREATE INDEX idx_states_scene ON states(scene_id);
 CREATE INDEX idx_states_beat ON states(beat_id);
@@ -243,7 +261,8 @@ CREATE INDEX idx_stories_created_at ON stories(created_at);
 
 -- NEW: Indexes for agents table
 CREATE INDEX idx_agents_type ON agents(agent_type);
-CREATE INDEX idx_agents_version ON agents(agent_version);
+CREATE INDEX idx_agents_task_id ON agents(agent_task_id);
+CREATE INDEX idx_agents_type_task ON agents(agent_type, agent_task_id);
 CREATE INDEX idx_agents_is_active ON agents(is_active);
 
 -- NEW: Indexes for agent_executions table

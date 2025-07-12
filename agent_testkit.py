@@ -10,6 +10,7 @@ import json
 import sqlite3
 import argparse
 from datetime import datetime
+from typing import Dict, List, Any, Optional
 
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -87,13 +88,13 @@ class AgentTestKit:
             self._create_test_agents()
     
     def _create_test_agents(self):
-        """Create test agent configurations"""
+        """Create test agent configurations with task-based structure"""
         # Create agents table if it doesn't exist (with INTEGER PRIMARY KEY)
         self.db.execute("""
             CREATE TABLE IF NOT EXISTS agents (
                 agent_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_type TEXT NOT NULL,
-                agent_version TEXT NOT NULL,
+                agent_task_id INTEGER NOT NULL,
                 agent_name TEXT,
                 agent_description TEXT,
                 agent_instructions TEXT,
@@ -101,7 +102,8 @@ class AgentTestKit:
                 model TEXT,
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(agent_type, agent_task_id)
             )
         """)
         
@@ -127,23 +129,43 @@ class AgentTestKit:
         
         agents = [
             {
-                'agent_type': 'PrepAgent',
-                'agent_version': 'v1.0',
-                'agent_name': 'Prep Agent Test',
-                'agent_description': 'Prepares context for story generation',
-                'agent_instructions': 'Prepare comprehensive context from entity relationships and user input.',
+                'agent_type': 'EntityAgent',
+                'agent_task_id': 1,
+                'agent_name': 'Entity Raw Extractor',
+                'agent_description': 'Extracts raw entity names from text',
+                'agent_instructions': 'Extract ONLY raw entity names from text. Do not classify or define. Return JSON array with name, type, confidence only.',
                 'agent_function_calls': '{}',
                 'model': 'gpt-4',
                 'is_active': True
             },
             {
                 'agent_type': 'EntityAgent',
-                'agent_version': 'v1.0', 
-                'agent_name': 'Entity Agent Test',
-                'agent_description': 'Extracts and manages entities from text',
-                'agent_instructions': 'Extract entities and classify them properly.',
+                'agent_task_id': 2,
+                'agent_name': 'Entity String Matcher',
+                'agent_description': 'Matches entities against database aliases',
+                'agent_instructions': 'N/A - no LLM needed for string matching',
+                'agent_function_calls': '{}',
+                'model': 'N/A',
+                'is_active': True
+            },
+            {
+                'agent_type': 'EntityAgent',
+                'agent_task_id': 3,
+                'agent_name': 'Entity Disambiguator',
+                'agent_description': 'Resolves ambiguous entity matches using context',
+                'agent_instructions': 'Given ambiguous entity candidates and context, determine which entity is being referenced.',
                 'agent_function_calls': '{}',
                 'model': 'gpt-3.5-turbo',
+                'is_active': True
+            },
+            {
+                'agent_type': 'PrepAgent',
+                'agent_task_id': 1,
+                'agent_name': 'Context Preparer',
+                'agent_description': 'Prepares context for story generation',
+                'agent_instructions': 'Prepare comprehensive context from entity relationships and user input.',
+                'agent_function_calls': '{}',
+                'model': 'gpt-4',
                 'is_active': True
             }
         ]
@@ -151,10 +173,10 @@ class AgentTestKit:
         # Check if agents already exist to avoid duplicates
         existing_count = self.db.execute("""
             SELECT COUNT(*) as count FROM agents 
-            WHERE agent_type IN ('PrepAgent', 'EntityAgent')
+            WHERE agent_type IN ('EntityAgent', 'PrepAgent')
         """).fetchone()['count']
         
-        if existing_count >= 2:
+        if existing_count >= 4:
             print("Test agents already exist.")
             return
         
@@ -162,45 +184,37 @@ class AgentTestKit:
             # Use regular INSERT (not INSERT OR REPLACE) with auto-increment
             cursor = self.db.execute("""
                 INSERT INTO agents 
-                (agent_type, agent_version, agent_name, agent_description,
+                (agent_type, agent_task_id, agent_name, agent_description,
                  agent_instructions, agent_function_calls, model, is_active)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (agent['agent_type'], agent['agent_version'],
+            """, (agent['agent_type'], agent['agent_task_id'],
                   agent['agent_name'], agent['agent_description'], agent['agent_instructions'],
                   agent['agent_function_calls'], agent['model'], agent['is_active']))
             
             agent_id = cursor.lastrowid
-            print(f"Created {agent['agent_type']} with ID: {agent_id}")
+            print(f"Created {agent['agent_type']} Task {agent['agent_task_id']} with ID: {agent_id}")
         
         self.db.commit()
-        print("Test agents created with auto-incremented IDs.")
+        print("Test agents created with task-based structure.")
     
-    def get_agent(self, agent_type: str):
-        """Get agent instance by finding the agent ID from database"""
-        # Find agent by type
-        cursor = self.db.execute("""
-            SELECT agent_id FROM agents 
-            WHERE agent_type = ? AND is_active = TRUE
-            ORDER BY created_at DESC
-            LIMIT 1
-        """, (agent_type.title() + 'Agent',))
-        
-        result = cursor.fetchone()
-        if not result:
-            raise ValueError(f"No active {agent_type} agent found in database")
-        
-        agent_id = result['agent_id']
-        
-        # Create agent instance with the database ID
-        if agent_id not in self.agents:
+    def get_agent(self, agent_type: str, task_id: int = 1):
+        """Get agent instance by type and task_id"""
+        try:
+            # Create agent instance with the type and task_id
             if agent_type == 'prep':
-                self.agents[agent_id] = PrepAgent(agent_id, self.db)
+                return PrepAgent('PrepAgent', task_id, self.db)
             elif agent_type == 'entity':
-                self.agents[agent_id] = EntityAgent(agent_id, self.db)
+                agent = EntityAgent('EntityAgent', task_id, self.db)
+                print(f"Debug - Created agent with agent_type: {agent.agent_type}, task_id: {agent.agent_task_id}")
+                print(f"Debug - Agent config: {agent.config}")
+                return agent
             else:
                 raise ValueError(f"Unknown agent type: {agent_type}")
-        
-        return self.agents[agent_id]
+        except Exception as e:
+            print(f"Error creating agent: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     def test_prep_agent(self, user_input: str = "", story_id: str = "1", 
                        scene_id: str = "1:s1", beat_id: str = "1:b3"):
@@ -243,42 +257,121 @@ class AgentTestKit:
             print(f"✗ Exception: {e}")
     
     def test_entity_agent(self, story_text: str, story_id: str = "1", extract_only: bool = True):
-        """Test EntityAgent"""
+        """Test EntityAgent with step-by-step options"""
         print("=" * 60)
         print(f"TESTING ENTITY AGENT")
         print(f"Text: '{story_text}'")
         print("-" * 60)
         
+        # Ask user which step(s) to run
+        print("Available steps:")
+        print("  1 - Raw entity extraction (LLM)")
+        print("  2 - String matching against aliases")
+        print("  3 - LLM disambiguation (not implemented yet)")
+        print("  4 - Entity classification (not implemented yet)")
+        print("  5 - Entity definitions (not implemented yet)")
+        print("  all - Run all implemented steps")
+        
+        step_choice = input("Which step to run? (1/2/all): ").strip().lower()
+        
         try:
             print("Getting EntityAgent instance...")
-            agent = self.get_agent('entity')
-            print(f"Agent created with ID: {agent.agent_id}")
+            agent = self.get_agent('entity', 1)  # Default to task 1 for initial creation
+            print(f"Agent created: {agent.agent_type} Task {agent.agent_task_id}")
             
-            story_context = {
-                'story_id': story_id, 'scene_id': '1:s1', 
-                'beat_id': '1:b3', 'timeline_id': '1:tl1'
-            }
-            
-            print("Starting EntityAgent execution...")
-            result = agent.execute(
-                story_text=story_text,
-                story_context=story_context,
-                extract_only=extract_only
-            )
-            print("EntityAgent execution completed.")
-            
-            if result['success']:
-                print(f"✓ Success - Found {result['entities_found']} entities")
-                if 'entities' in result:
-                    for entity in result['entities']:
-                        print(f"  • {entity['name']} ({entity['type']}) - confidence: {entity['confidence']}")
+            if step_choice == "1":
+                self._test_step1_raw_extraction(agent, story_text, story_id)
+            elif step_choice == "2":
+                # First need raw entities for step 2
+                print("Step 2 requires raw entities. Running step 1 first...")
+                raw_entities = self._test_step1_raw_extraction(agent, story_text, story_id)
+                if raw_entities:
+                    extracted_names = [e['name'] for e in raw_entities]
+                    self._test_step2_string_matching(agent, extracted_names, story_id)
+            elif step_choice == "all":
+                self._test_all_entity_steps(agent, story_text, story_id)
             else:
-                print(f"✗ Error: {result['error']}")
+                print(f"Invalid choice: {step_choice}")
                 
         except Exception as e:
             print(f"✗ Exception: {e}")
             import traceback
             traceback.print_exc()
+    
+    def _test_step1_raw_extraction(self, agent, story_text: str, story_id: str):
+        """Test Step 1: Raw entity extraction (names only)"""
+        print("\n" + "="*40)
+        print("STEP 1: RAW ENTITY EXTRACTION (NAMES ONLY)")
+        print("="*40)
+        
+        try:
+            # Get the raw extraction agent (task 1)
+            raw_agent = self.get_agent('entity', 1)
+            entity_names = raw_agent._extract_entities_with_llm(story_text, story_id)
+            print(f"✓ Extracted {len(entity_names)} raw entity names:")
+            for name in entity_names:
+                print(f"  • {name}")
+            return entity_names
+        except Exception as e:
+            print(f"✗ Step 1 failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _test_step2_string_matching(self, agent, extracted_names: List[str], story_id: str):
+        """Test Step 2: String matching against aliases"""
+        print("\n" + "="*40)
+        print("STEP 2: STRING MATCHING")
+        print("="*40)
+        print(f"Input entity names: {extracted_names}")
+        
+        try:
+            # Get the string matching agent (task 2)
+            string_agent = self.get_agent('entity', 2)
+            results = string_agent.resolve_entities_step1_string_matching(extracted_names, story_id)
+            print(f"✓ String matching results:")
+            for name, result in results.items():
+                if result['match_type'] == 'exact':
+                    print(f"  • {name} → EXACT match: {result['entity_name']} (ID: {result['entity_id']})")
+                elif result['match_type'] == 'substring':
+                    print(f"  • {name} → SUBSTRING match: {result['entity_name']} (ID: {result['entity_id']})")
+                elif result['match_type'] == 'fuzzy':
+                    print(f"  • {name} → FUZZY match: {result['entity_name']} (ID: {result['entity_id']}, score: {result['score']:.2f})")
+                elif result['match_type'] == 'ambiguous':
+                    print(f"  • {name} → AMBIGUOUS: {len(result['candidates'])} candidates")
+                    for candidate in result['candidates']:
+                        print(f"    - {candidate['entity_name']} (ID: {candidate['entity_id']})")
+                elif result['match_type'] == 'no_match':
+                    print(f"  • {name} → NO MATCH (new entity)")
+            return results
+        except Exception as e:
+            print(f"✗ Step 2 failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _test_all_entity_steps(self, agent, story_text: str, story_id: str):
+        """Test all entity steps in sequence"""
+        print("\n" + "="*40)
+        print("RUNNING ALL ENTITY STEPS")
+        print("="*40)
+        
+        # Step 1: Raw extraction (returns list of names)
+        entity_names = self._test_step1_raw_extraction(agent, story_text, story_id)
+        if not entity_names:
+            print("Cannot continue - Step 1 failed")
+            return
+        
+        # Step 2: String matching (takes list of names)
+        string_results = self._test_step2_string_matching(agent, entity_names, story_id)
+        if not string_results:
+            print("Cannot continue - Step 2 failed")
+            return
+        
+        # Future steps would go here
+        print("\n" + "="*40)
+        print("ALL IMPLEMENTED STEPS COMPLETED")
+        print("="*40)
     
     def show_database_state(self, story_id: str = "1"):
         """Show database state"""

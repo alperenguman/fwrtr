@@ -7,6 +7,9 @@ from base_agent import BaseAgent
 class EntityAgent(BaseAgent):
     """Identifies and manages entities from text"""
     
+    def __init__(self, agent_type: str, agent_task_id: int, db_connection):
+        super().__init__(agent_type, agent_task_id, db_connection)
+    
     def execute(self, story_text: str, story_context: Dict, extract_only: bool = False) -> Dict[str, Any]:
         """
         Extract and manage entities from text:
@@ -72,36 +75,163 @@ class EntityAgent(BaseAgent):
             self._finish_execution("", f"Error: {str(e)}")
             return {'success': False, 'error': str(e)}
     
-    def _extract_entities_with_llm(self, text: str, story_id: str) -> List[Dict[str, Any]]:
-        """Extract entities from text using LLM with fallback to keyword extraction"""
+    def resolve_entities_step1_string_matching(self, extracted_names: List[str], story_id: str) -> Dict[str, any]:
+        """
+        Step 1: String-based entity resolution against aliases table
+        Returns mapping of extracted_name -> result dict
+        """
+        # Get all entity aliases (includes main names + aliases)
+        entity_aliases = self.db.execute("""
+            SELECT ea.alias_name, ea.entity_id, e.name as entity_name 
+            FROM entity_aliases ea
+            JOIN entities e ON ea.entity_id = e.entity_id
+            WHERE e.story_id = ?
+        """, (story_id,)).fetchall()
         
-        # Get existing entities for context
-        existing_entities = self._get_existing_entities(story_id)
-        existing_names = [e['name'] for e in existing_entities]
+        results = {}
         
-        # Build extraction prompt
-        extraction_prompt = self._build_extraction_prompt(text, existing_names)
+        for extracted_name in extracted_names:
+            match = self._find_string_match_in_aliases(extracted_name, entity_aliases)
+            if match:
+                results[extracted_name] = match
+            else:
+                results[extracted_name] = {'match_type': 'no_match'}
         
-        # Prepare fallback function
-        def fallback_extraction():
-            return self._fallback_entity_extraction(text, existing_entities)
+        return results
+
+    def _find_string_match_in_aliases(self, name: str, entity_aliases) -> Dict:
+        """Find best string match using exact, substring, and fuzzy matching against aliases"""
+        name_lower = name.lower()
         
-        # Try LLM with fallback
+        # 1. Exact matches - collect ALL exact matches first
+        exact_matches = []
+        for alias_row in entity_aliases:
+            if name_lower == alias_row['alias_name'].lower():
+                exact_matches.append(alias_row)
+        
+        # If multiple exact matches, return ambiguous
+        if len(exact_matches) > 1:
+            return {
+                'match_type': 'ambiguous',
+                'candidates': [
+                    {
+                        'entity_id': row['entity_id'], 
+                        'entity_name': row['entity_name'],
+                        'matched_alias': row['alias_name']
+                    } for row in exact_matches
+                ],
+                'reason': f'"{name}" exactly matches multiple aliases: {", ".join([row["alias_name"] for row in exact_matches])}'
+            }
+        elif len(exact_matches) == 1:
+            match = exact_matches[0]
+            return {
+                'entity_id': match['entity_id'], 
+                'match_type': 'exact',
+                'matched_alias': match['alias_name'],
+                'entity_name': match['entity_name']
+            }
+        
+        # 2. Substring matches - collect all matches
+        substring_matches = []
+        for alias_row in entity_aliases:
+            alias_name_lower = alias_row['alias_name'].lower()
+            if name_lower in alias_name_lower or alias_name_lower in name_lower:
+                substring_matches.append(alias_row)
+        
+        # If multiple substring matches, return ambiguous
+        if len(substring_matches) > 1:
+            return {
+                'match_type': 'ambiguous', 
+                'candidates': [
+                    {
+                        'entity_id': row['entity_id'], 
+                        'entity_name': row['entity_name'],
+                        'matched_alias': row['alias_name']
+                    } for row in substring_matches
+                ],
+                'reason': f'"{name}" matches multiple aliases: {", ".join([row["alias_name"] for row in substring_matches])}'
+            }
+        elif len(substring_matches) == 1:
+            match = substring_matches[0]
+            return {
+                'entity_id': match['entity_id'], 
+                'match_type': 'substring',
+                'matched_alias': match['alias_name'],
+                'entity_name': match['entity_name']
+            }
+        
+        # 3. Fuzzy matches - collect all high-scoring matches
+        from difflib import SequenceMatcher
+        fuzzy_matches = []
+        threshold = 0.8
+        
+        for alias_row in entity_aliases:
+            similarity = SequenceMatcher(None, name_lower, alias_row['alias_name'].lower()).ratio()
+            if similarity >= threshold:
+                fuzzy_matches.append({
+                    'alias_row': alias_row,
+                    'score': similarity
+                })
+        
+        # If multiple fuzzy matches, return ambiguous
+        if len(fuzzy_matches) > 1:
+            # Sort by score descending
+            fuzzy_matches.sort(key=lambda x: x['score'], reverse=True)
+            return {
+                'match_type': 'ambiguous',
+                'candidates': [
+                    {
+                        'entity_id': m['alias_row']['entity_id'], 
+                        'entity_name': m['alias_row']['entity_name'],
+                        'matched_alias': m['alias_row']['alias_name'],
+                        'score': m['score']
+                    } for m in fuzzy_matches
+                ],
+                'reason': f'"{name}" has multiple fuzzy matches with high similarity'
+            }
+        elif len(fuzzy_matches) == 1:
+            match = fuzzy_matches[0]
+            return {
+                'entity_id': match['alias_row']['entity_id'], 
+                'match_type': 'fuzzy', 
+                'score': match['score'],
+                'matched_alias': match['alias_row']['alias_name'],
+                'entity_name': match['alias_row']['entity_name']
+            }
+        
+        return None  # No matches found
+    
+    def _extract_entities_with_llm(self, text: str, story_id: str) -> List[str]:
+        """Step 1: Extract ONLY raw entity names from text - no classification"""
+        
+        print(f"DEBUG: Step 1 - Raw entity extraction only")
+        
         try:
+            # Get existing entities for context only
+            existing_entities = self._get_existing_entities(story_id)
+            existing_names = [e['name'] for e in existing_entities]
+            
+            # Build raw extraction prompt using task-specific instructions
+            extraction_prompt = self._build_raw_extraction_prompt(text, existing_names)
+            
+            # Prepare fallback function that returns just names
+            def fallback_extraction():
+                return self._fallback_raw_extraction(text, existing_entities)
+            
             messages = [{"role": "user", "content": extraction_prompt}]
             
             llm_response = self.call_llm_with_fallback(
                 messages=messages,
                 fallback_func=fallback_extraction,
-                max_tokens=1000,
+                max_tokens=500,
                 temperature=0.3
             )
             
-            # If we got a string response, try to parse it as LLM output
+            # Parse response to extract just the names
             if isinstance(llm_response, str) and llm_response.strip():
-                entities = self._parse_extraction_response(llm_response, text)
-                if entities:  # If parsing succeeded
-                    return entities
+                entity_names = self._parse_raw_names_response(llm_response)
+                if entity_names:
+                    return entity_names
             
             # Fall back to keyword extraction
             print("LLM response parsing failed, using fallback extraction")
@@ -109,7 +239,59 @@ class EntityAgent(BaseAgent):
             
         except Exception as e:
             print(f"LLM extraction failed: {e}, falling back to keyword extraction")
-            return fallback_extraction()
+            return self._fallback_raw_extraction(text, existing_entities)
+
+    def _build_raw_extraction_prompt(self, text: str, existing_names: List[str]) -> str:
+        """Build prompt for raw name extraction only"""
+        prompt_parts = [
+            "Extract ONLY the entity names from this text. Return just the names, nothing else.",
+            "Do NOT classify, describe, or analyze - just list the entity names.",
+            "",
+            f"Text: {text}",
+            "",
+            "Return as simple JSON array of strings:",
+            '["Entity Name 1", "Entity Name 2", "Entity Name 3"]',
+            "",
+            f"Reference (existing entities): {', '.join(existing_names[:5]) if existing_names else 'None'}"
+        ]
+        
+        return "\n".join(prompt_parts)
+
+    def _parse_raw_names_response(self, llm_response: str) -> List[str]:
+        """Parse LLM response to extract just entity names"""
+        try:
+            import re
+            # Try to find JSON array in the response
+            json_match = re.search(r'\[.*?\]', llm_response, re.DOTALL)
+            if json_match:
+                entity_names = json.loads(json_match.group())
+                # Validate it's a list of strings
+                if isinstance(entity_names, list):
+                    return [str(name).strip() for name in entity_names if str(name).strip()]
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"Failed to parse raw names response: {e}")
+        
+        return []
+
+    def _fallback_raw_extraction(self, text: str, existing_entities: List[Dict]) -> List[str]:
+        """Fallback: extract just raw entity names using patterns"""
+        entity_names = []
+        
+        # Look for existing entities mentioned in text
+        for existing in existing_entities:
+            if existing['name'].lower() in text.lower():
+                entity_names.append(existing['name'])
+        
+        # Simple pattern matching for new entities (proper nouns only)
+        import re
+        proper_nouns = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
+        
+        for noun in set(proper_nouns):
+            if noun not in entity_names:  # Avoid duplicates
+                entity_names.append(noun)
+        
+        return entity_names
     
     def _build_extraction_prompt(self, text: str, existing_names: List[str]) -> str:
         """Build prompt for LLM entity extraction"""
