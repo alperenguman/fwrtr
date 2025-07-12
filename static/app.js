@@ -843,19 +843,12 @@ if (typeof window.storywriterApp === 'undefined') {
         Object.keys(attributes).forEach(key => {
             const value = attributes[key];
             html += '<div class="attribute-editor-item" data-key="' + key + '">';
-            
-            // Header with key and buttons on same line
-            html += '<div class="attribute-editor-header">';
             html += '<div class="attribute-editor-key">' + key + '</div>';
+            html += '<input type="text" class="attribute-editor-value" value="' + value + '" data-key="' + key + '" placeholder="Enter value...">';
             html += '<div class="attribute-editor-actions">';
             html += '<button class="card-action-btn ai-btn" data-attr="' + key + '" title="AI suggest value">AI</button>';
             html += '<button class="card-action-btn remove-attr" data-attr="' + key + '" title="Remove attribute">×</button>';
             html += '</div>';
-            html += '</div>';
-            
-            // Value input on second line
-            html += '<input type="text" class="attribute-editor-value" value="' + value + '" data-key="' + key + '" placeholder="Enter value...">';
-            
             html += '</div>';
         });
         
