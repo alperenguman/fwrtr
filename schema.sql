@@ -152,7 +152,7 @@ CREATE TABLE stories (
 
 -- NEW: Agents table for agent definitions and configuration
 CREATE TABLE agents (
-    agent_id TEXT PRIMARY KEY, -- Unique identifier for agent (e.g., 'prep_agent_v1', 'generator_main')
+    agent_id INTEGER PRIMARY KEY AUTOINCREMENT, -- ✅ Changed to auto-incrementing integer
     agent_type TEXT NOT NULL, -- 'PrepAgent', 'GeneratorAgent', 'EvalAgent', 'ContinuityGuard'
     agent_version TEXT NOT NULL, -- Version of the agent (v1.0, v2.1, etc.)
     agent_name TEXT, -- Human-readable name
@@ -175,7 +175,7 @@ CREATE TABLE agent_executions (
     agent_execution_id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- Agent reference
-    agent_id TEXT NOT NULL, -- References agents.agent_id
+    agent_id INTEGER NOT NULL, -- ✅ Changed to integer to match agents table
     
     -- Execution context
     story_id TEXT NOT NULL,

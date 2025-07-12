@@ -10,7 +10,7 @@ class EntityAgent(BaseAgent):
     def execute(self, story_text: str, story_context: Dict, extract_only: bool = False) -> Dict[str, Any]:
         """
         Extract and manage entities from text:
-        1. Extract entities from text using LLM
+        1. Extract entities from text using LLM or fallback
         2. Create/update entities with proper class hierarchy
         3. Optionally create states in current context
         4. Return entity information for other agents
@@ -27,7 +27,7 @@ class EntityAgent(BaseAgent):
         )
         
         try:
-            # 1. Extract entities from text using LLM
+            # 1. Extract entities from text using LLM with fallback
             extracted_entities = self._extract_entities_with_llm(story_text, story_context['story_id'])
             
             # 2. Create/update entities in database with class confirmation
@@ -73,7 +73,7 @@ class EntityAgent(BaseAgent):
             return {'success': False, 'error': str(e)}
     
     def _extract_entities_with_llm(self, text: str, story_id: str) -> List[Dict[str, Any]]:
-        """Extract entities from text using LLM with existing story context"""
+        """Extract entities from text using LLM with fallback to keyword extraction"""
         
         # Get existing entities for context
         existing_entities = self._get_existing_entities(story_id)
@@ -82,29 +82,34 @@ class EntityAgent(BaseAgent):
         # Build extraction prompt
         extraction_prompt = self._build_extraction_prompt(text, existing_names)
         
-        # Call LLM for entity extraction
+        # Prepare fallback function
+        def fallback_extraction():
+            return self._fallback_entity_extraction(text, existing_entities)
+        
+        # Try LLM with fallback
         try:
-            import openai
-            client = openai.OpenAI()  # Configure with your API key
+            messages = [{"role": "user", "content": extraction_prompt}]
             
-            response = client.chat.completions.create(
-                model=self.config['model'],
-                messages=[{"role": "user", "content": extraction_prompt}],
+            llm_response = self.call_llm_with_fallback(
+                messages=messages,
+                fallback_func=fallback_extraction,
                 max_tokens=1000,
-                temperature=0.3  # Lower temperature for more consistent extraction
+                temperature=0.3
             )
             
-            extraction_result = response.choices[0].message.content
+            # If we got a string response, try to parse it as LLM output
+            if isinstance(llm_response, str) and llm_response.strip():
+                entities = self._parse_extraction_response(llm_response, text)
+                if entities:  # If parsing succeeded
+                    return entities
             
-            # Parse LLM response to extract entity information
-            entities = self._parse_extraction_response(extraction_result, text)
-            
-            return entities
+            # Fall back to keyword extraction
+            print("LLM response parsing failed, using fallback extraction")
+            return fallback_extraction()
             
         except Exception as e:
-            # Fallback to simple regex/keyword extraction if LLM fails
             print(f"LLM extraction failed: {e}, falling back to keyword extraction")
-            return self._fallback_entity_extraction(text, existing_entities)
+            return fallback_extraction()
     
     def _build_extraction_prompt(self, text: str, existing_names: List[str]) -> str:
         """Build prompt for LLM entity extraction"""
@@ -159,8 +164,8 @@ class EntityAgent(BaseAgent):
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             print(f"Failed to parse LLM extraction response: {e}")
         
-        # Fallback to keyword extraction
-        return self._fallback_entity_extraction(original_text, [])
+        # Return empty list if parsing fails - fallback will be used
+        return []
     
     def _fallback_entity_extraction(self, text: str, existing_entities: List[Dict]) -> List[Dict[str, Any]]:
         """Fallback entity extraction using keywords and patterns"""
