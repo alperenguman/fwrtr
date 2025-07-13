@@ -133,7 +133,20 @@ class AgentTestKit:
                 'agent_task_id': 1,
                 'agent_name': 'Entity Raw Extractor',
                 'agent_description': 'Extracts raw entity names from text',
-                'agent_instructions': 'Extract ONLY raw entity names from text. Do not classify or define. Return JSON array with name, type, confidence only.',
+                'agent_instructions': '''Extract ONLY entity names from this text. Return as JSON array of strings.
+
+Do NOT classify, describe, or analyze - just identify the entity names present in the text.
+
+Return format: ["Entity Name 1", "Entity Name 2", "Entity Name 3"]
+
+Focus on:
+- Characters/people mentioned
+- Objects that are important to the scene
+- Locations referenced
+- Times/periods mentioned
+- Thoughts or feelings that are personified
+
+Be conservative - only include entities that are clearly present or referenced.''',
                 'agent_function_calls': '{}',
                 'model': 'gpt-4',
                 'is_active': True
@@ -256,122 +269,74 @@ class AgentTestKit:
         except Exception as e:
             print(f"✗ Exception: {e}")
     
-    def test_entity_agent(self, story_text: str, story_id: str = "1", extract_only: bool = True):
-        """Test EntityAgent with step-by-step options"""
+    def test_entity_agent(self, story_text: str, story_id: str = "1", task_id: int = None):
+        """Test EntityAgent with task selection"""
         print("=" * 60)
         print(f"TESTING ENTITY AGENT")
         print(f"Text: '{story_text}'")
         print("-" * 60)
         
-        # Ask user which step(s) to run
-        print("Available steps:")
-        print("  1 - Raw entity extraction (LLM)")
-        print("  2 - String matching against aliases")
-        print("  3 - LLM disambiguation (not implemented yet)")
-        print("  4 - Entity classification (not implemented yet)")
-        print("  5 - Entity definitions (not implemented yet)")
-        print("  all - Run all implemented steps")
+        if task_id is None:
+            # Ask user which task to run
+            print("Available tasks:")
+            print("  1 - Raw entity extraction (LLM)")
+            print("  2 - String matching against aliases")
+            print("  3 - LLM disambiguation (not implemented yet)")
+            
+            task_choice = input("Which task to run? (1/2/3): ").strip()
+            try:
+                task_id = int(task_choice)
+            except ValueError:
+                print(f"Invalid choice: {task_choice}")
+                return
         
-        step_choice = input("Which step to run? (1/2/all): ").strip().lower()
+        self.test_specific_task(task_id, story_text, story_id)
+    
+    def test_specific_task(self, task_id: int, story_text: str, story_id: str = "test"):
+        """Test a specific EntityAgent task"""
+        print("=" * 60)
+        print(f"TESTING ENTITY AGENT TASK {task_id}")
+        print(f"Text: '{story_text}'")
+        print("-" * 60)
         
         try:
-            print("Getting EntityAgent instance...")
-            agent = self.get_agent('entity', 1)  # Default to task 1 for initial creation
-            print(f"Agent created: {agent.agent_type} Task {agent.agent_task_id}")
+            agent = self.get_agent('entity', task_id)
+            print(f"Created EntityAgent Task {task_id}")
+            print(f"Agent config: {agent.config['name']}")
+            print(f"Instructions: {agent.config['instructions'][:200]}...")
             
-            if step_choice == "1":
-                self._test_step1_raw_extraction(agent, story_text, story_id)
-            elif step_choice == "2":
-                # First need raw entities for step 2
-                print("Step 2 requires raw entities. Running step 1 first...")
-                raw_entities = self._test_step1_raw_extraction(agent, story_text, story_id)
-                if raw_entities:
-                    extracted_names = [e['name'] for e in raw_entities]
-                    self._test_step2_string_matching(agent, extracted_names, story_id)
-            elif step_choice == "all":
-                self._test_all_entity_steps(agent, story_text, story_id)
+            result = agent.execute(
+                story_text=story_text,
+                story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
+                extract_only=True
+            )
+            
+            if result['success']:
+                print(f"✓ Task {task_id} Success:")
+                print(f"  Task type: {result.get('task', 'unknown')}")
+                if 'raw_names' in result:
+                    print(f"  Raw names: {result['raw_names']}")
+                if 'matching_results' in result:
+                    print(f"  Matching results: {len(result['matching_results'])} items")
+                    for name, match in result['matching_results'].items():
+                        print(f"    {name} -> {match['match_type']}")
+                        if match['match_type'] == 'exact':
+                            print(f"      Matched: {match['entity_name']} (ID: {match['entity_id']})")
+                        elif match['match_type'] in ['substring', 'fuzzy']:
+                            print(f"      Matched: {match['entity_name']} (ID: {match['entity_id']})")
+                            if 'score' in match:
+                                print(f"      Score: {match['score']:.2f}")
+                        elif match['match_type'] == 'ambiguous':
+                            print(f"      Candidates: {len(match['candidates'])}")
+                            for candidate in match['candidates'][:3]:  # Show first 3
+                                print(f"        - {candidate['entity_name']} (ID: {candidate['entity_id']})")
             else:
-                print(f"Invalid choice: {step_choice}")
+                print(f"✗ Task {task_id} Failed: {result.get('error', 'Unknown error')}")
                 
         except Exception as e:
-            print(f"✗ Exception: {e}")
+            print(f"✗ Exception in Task {task_id}: {e}")
             import traceback
             traceback.print_exc()
-    
-    def _test_step1_raw_extraction(self, agent, story_text: str, story_id: str):
-        """Test Step 1: Raw entity extraction (names only)"""
-        print("\n" + "="*40)
-        print("STEP 1: RAW ENTITY EXTRACTION (NAMES ONLY)")
-        print("="*40)
-        
-        try:
-            # Get the raw extraction agent (task 1)
-            raw_agent = self.get_agent('entity', 1)
-            entity_names = raw_agent._extract_entities_with_llm(story_text, story_id)
-            print(f"✓ Extracted {len(entity_names)} raw entity names:")
-            for name in entity_names:
-                print(f"  • {name}")
-            return entity_names
-        except Exception as e:
-            print(f"✗ Step 1 failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
-    def _test_step2_string_matching(self, agent, extracted_names: List[str], story_id: str):
-        """Test Step 2: String matching against aliases"""
-        print("\n" + "="*40)
-        print("STEP 2: STRING MATCHING")
-        print("="*40)
-        print(f"Input entity names: {extracted_names}")
-        
-        try:
-            # Get the string matching agent (task 2)
-            string_agent = self.get_agent('entity', 2)
-            results = string_agent.resolve_entities_step1_string_matching(extracted_names, story_id)
-            print(f"✓ String matching results:")
-            for name, result in results.items():
-                if result['match_type'] == 'exact':
-                    print(f"  • {name} → EXACT match: {result['entity_name']} (ID: {result['entity_id']})")
-                elif result['match_type'] == 'substring':
-                    print(f"  • {name} → SUBSTRING match: {result['entity_name']} (ID: {result['entity_id']})")
-                elif result['match_type'] == 'fuzzy':
-                    print(f"  • {name} → FUZZY match: {result['entity_name']} (ID: {result['entity_id']}, score: {result['score']:.2f})")
-                elif result['match_type'] == 'ambiguous':
-                    print(f"  • {name} → AMBIGUOUS: {len(result['candidates'])} candidates")
-                    for candidate in result['candidates']:
-                        print(f"    - {candidate['entity_name']} (ID: {candidate['entity_id']})")
-                elif result['match_type'] == 'no_match':
-                    print(f"  • {name} → NO MATCH (new entity)")
-            return results
-        except Exception as e:
-            print(f"✗ Step 2 failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
-    def _test_all_entity_steps(self, agent, story_text: str, story_id: str):
-        """Test all entity steps in sequence"""
-        print("\n" + "="*40)
-        print("RUNNING ALL ENTITY STEPS")
-        print("="*40)
-        
-        # Step 1: Raw extraction (returns list of names)
-        entity_names = self._test_step1_raw_extraction(agent, story_text, story_id)
-        if not entity_names:
-            print("Cannot continue - Step 1 failed")
-            return
-        
-        # Step 2: String matching (takes list of names)
-        string_results = self._test_step2_string_matching(agent, entity_names, story_id)
-        if not string_results:
-            print("Cannot continue - Step 2 failed")
-            return
-        
-        # Future steps would go here
-        print("\n" + "="*40)
-        print("ALL IMPLEMENTED STEPS COMPLETED")
-        print("="*40)
     
     def show_database_state(self, story_id: str = "1"):
         """Show database state"""
@@ -385,6 +350,22 @@ class AgentTestKit:
         """, (story_id,)).fetchall()
         print(f"Entities ({len(entities)}): {', '.join([f'{e[0]} ({e[1]})' for e in entities])}")
         
+        # Entity aliases
+        aliases = self.db.execute("""
+            SELECT ea.alias_name, e.name as entity_name 
+            FROM entity_aliases ea
+            JOIN entities e ON ea.entity_id = e.entity_id
+            WHERE e.story_id = ?
+            ORDER BY e.name, ea.alias_name
+        """, (story_id,)).fetchall()
+        print(f"Aliases ({len(aliases)}):")
+        current_entity = None
+        for alias in aliases:
+            if alias['entity_name'] != current_entity:
+                current_entity = alias['entity_name']
+                print(f"  {current_entity}:")
+            print(f"    - {alias['alias_name']}")
+        
         # Relationships  
         relationships = self.db.execute("""
             SELECT COUNT(*) as count FROM relationships WHERE story_id = ?
@@ -393,16 +374,67 @@ class AgentTestKit:
         
         # Recent executions
         executions = self.db.execute("""
-            SELECT agent_id, COUNT(*) as count FROM agent_executions 
-            GROUP BY agent_id ORDER BY agent_id
+            SELECT a.agent_type, a.agent_task_id, COUNT(*) as count 
+            FROM agent_executions ae
+            JOIN agents a ON ae.agent_id = a.agent_id
+            GROUP BY a.agent_type, a.agent_task_id 
+            ORDER BY a.agent_type, a.agent_task_id
         """).fetchall()
-        print(f"Agent executions: {dict(executions)}")
+        print(f"Agent executions:")
+        for execution in executions:
+            print(f"  {execution[0]} Task {execution[1]}: {execution[2]} runs")
+        
+        # Show agents
+        agents = self.db.execute("""
+            SELECT agent_type, agent_task_id, agent_name FROM agents 
+            WHERE is_active = TRUE ORDER BY agent_type, agent_task_id
+        """).fetchall()
+        print(f"Active agents:")
+        for agent in agents:
+            print(f"  {agent[0]} Task {agent[1]}: {agent[2]}")
+    
+    def show_agent_details(self, agent_type: str = None, task_id: int = None):
+        """Show detailed agent configuration"""
+        print("=" * 60)
+        print("AGENT DETAILS")
+        print("-" * 60)
+        
+        query = "SELECT * FROM agents WHERE is_active = TRUE"
+        params = []
+        
+        if agent_type:
+            query += " AND agent_type = ?"
+            params.append(agent_type)
+        
+        if task_id:
+            query += " AND agent_task_id = ?"
+            params.append(task_id)
+        
+        query += " ORDER BY agent_type, agent_task_id"
+        
+        agents = self.db.execute(query, params).fetchall()
+        
+        for agent in agents:
+            print(f"\n{agent['agent_type']} Task {agent['agent_task_id']}:")
+            print(f"  Name: {agent['agent_name']}")
+            print(f"  Description: {agent['agent_description']}")
+            print(f"  Model: {agent['model']}")
+            print(f"  Instructions: {agent['agent_instructions'][:300]}...")
+            print(f"  Function calls: {agent['agent_function_calls']}")
     
     def interactive_mode(self):
         """Interactive CLI"""
         print("=" * 60)
         print("STORYWRITER AGENT TESTKIT")
-        print("Commands: prep <text> | entity <text> | db | quit")
+        print("Commands:")
+        print("  prep <text>        - Test PrepAgent")
+        print("  entity <text>      - Test EntityAgent (with task selection)")
+        print("  entity1 <text>     - Test EntityAgent Task 1 (raw extraction)")
+        print("  entity2 <text>     - Test EntityAgent Task 2 (string matching)")
+        print("  db                 - Show database state")
+        print("  agents             - Show agent details")
+        print("  agents <type>      - Show specific agent type details")
+        print("  quit               - Exit")
         print("=" * 60)
         
         while True:
@@ -418,8 +450,17 @@ class AgentTestKit:
                     self.test_prep_agent(user_input=args)
                 elif cmd == 'entity':
                     self.test_entity_agent(story_text=args)
+                elif cmd == 'entity1':
+                    self.test_specific_task(1, args)
+                elif cmd == 'entity2':
+                    self.test_specific_task(2, args)
                 elif cmd == 'db':
                     self.show_database_state()
+                elif cmd == 'agents':
+                    if args:
+                        self.show_agent_details(agent_type=args.upper() + 'Agent')
+                    else:
+                        self.show_agent_details()
                 else:
                     print(f"Unknown command: {cmd}")
                     
@@ -430,6 +471,7 @@ class AgentTestKit:
 def main():
     parser = argparse.ArgumentParser(description='Test Storywriter agents')
     parser.add_argument('--agent', choices=['prep', 'entity'], help='Agent to test')
+    parser.add_argument('--task', type=int, help='Task ID for EntityAgent (1, 2, 3)')
     parser.add_argument('--input', help='Input text')
     parser.add_argument('--db', default='storywriter.db', help='Database path')
     
@@ -440,7 +482,8 @@ def main():
             if args.agent == 'prep':
                 testkit.test_prep_agent(user_input=args.input)
             elif args.agent == 'entity':
-                testkit.test_entity_agent(story_text=args.input)
+                task_id = args.task or 1
+                testkit.test_specific_task(task_id, args.input)
         else:
             testkit.interactive_mode()
 
