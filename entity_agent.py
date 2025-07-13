@@ -7,7 +7,9 @@ from base_agent import BaseAgent
 class EntityAgent(BaseAgent):
     """Identifies and manages entities from text using task-based configuration"""
     
-    def execute(self, story_text: str, story_context: Dict, extract_only: bool = False) -> Dict[str, Any]:
+    # Replace the execute method in your entity_agent.py with this:
+    def execute(self, story_text: str, story_context: Dict, extract_only: bool = False, 
+                entity_names: List[str] = None) -> Dict[str, Any]:
         """Main execution entry point - delegates to specific task methods based on agent_task_id"""
         
         print(f"DEBUG: EntityAgent.execute called with task_id={self.agent_task_id}")
@@ -27,7 +29,8 @@ class EntityAgent(BaseAgent):
             if self.agent_task_id == 1:
                 result = self._task1_raw_extraction(story_text, story_context, extract_only)
             elif self.agent_task_id == 2:
-                result = self._task2_string_matching(story_text, story_context, extract_only)
+                # Task 2 receives entity names from Task 1 or manual input
+                result = self._task2_string_matching(story_text, story_context, extract_only, entity_names)
             elif self.agent_task_id == 3:
                 result = self._task3_disambiguation(story_text, story_context, extract_only)
             else:
@@ -92,32 +95,225 @@ class EntityAgent(BaseAgent):
            self._finish_execution("", f"Task 1 Error: {str(e)}", 0)
            return {'success': False, 'error': str(e)}
     
-    def _task2_string_matching(self, story_text: str, story_context: Dict, extract_only: bool) -> Dict[str, Any]:
-        """Task 2: String matching against database aliases"""
-        print(f"[EntityAgent:2] Starting string matching")
+    def _task2_string_matching(self, story_text: str, story_context: Dict, extract_only: bool, entity_names: List[str] = None) -> Dict[str, Any]:
+        """Task 2: Enhanced string matching against database aliases"""
+        print(f"[EntityAgent:2] Starting enhanced string matching")
         
         try:
-            # This task doesn't use LLM - it's pure string matching
-            entity_names = self._simple_entity_extraction(story_text, story_context['story_id'])
+            # Task 2 ONLY does string matching - requires entity names from Task 1
+            if entity_names is None:
+                error_msg = "Task 2 requires entity names from Task 1. No entity extraction performed."
+                self._finish_execution("", error_msg)
+                return {
+                    'success': False, 
+                    'error': error_msg,
+                    'task': 'string_matching',
+                    'requires': 'entity_names_from_task1'
+                }
             
-            # Perform string matching
-            matching_results = self.resolve_entities_step1_string_matching(entity_names, story_context['story_id'])
+            print(f"[EntityAgent:2] Matching {len(entity_names)} entity names: {entity_names}")
+            
+            if not entity_names:
+                self._finish_execution(
+                    "Empty entity names list provided",
+                    "String matching completed - no entities to match"
+                )
+                return {
+                    'success': True,
+                    'matching_results': {},
+                    'entity_names': [],
+                    'task': 'string_matching',
+                    'strategy_stats': {'no_entities': True}
+                }
+            
+            # Get all entity aliases for matching
+            entity_aliases = self._get_entity_aliases_for_matching(story_context['story_id'])
+            
+            # Perform enhanced string matching
+            matching_results = {}
+            strategy_stats = {'exact': 0, 'normalized': 0, 'fuzzy': 0, 'ambiguous': 0, 'no_match': 0}
+            
+            for entity_name in entity_names:
+                match_result = self._find_best_string_match(entity_name, entity_aliases)
+                matching_results[entity_name] = match_result
+                
+                # Track strategy usage
+                match_type = match_result.get('match_type', 'no_match')
+                if match_type in strategy_stats:
+                    strategy_stats[match_type] += 1
+                else:
+                    strategy_stats['no_match'] += 1
+            
+            # Build result summary
+            total_matches = sum(v for k, v in strategy_stats.items() if k != 'no_match')
+            result_summary = f"Matched {len(entity_names)} entities: {total_matches} found, {strategy_stats['no_match']} unmatched"
             
             self._finish_execution(
-                f"Matched {len(entity_names)} entities against database",
-                "String matching completed successfully"
+                result_summary,
+                "Enhanced string matching completed successfully"
             )
             
             return {
                 'success': True,
                 'matching_results': matching_results,
                 'entity_names': entity_names,
-                'task': 'string_matching'
+                'task': 'string_matching',
+                'strategy_stats': strategy_stats,
+                'total_entities': len(entity_names)
             }
             
         except Exception as e:
-            self._finish_execution("", f"Task 2 Error: {str(e)}", 0)
-            return {'success': False, 'error': str(e)}
+            error_msg = f"Task 2 Error: {str(e)}"
+            self._finish_execution("", error_msg, 0)
+            return {'success': False, 'error': error_msg}
+
+    # Task 2 does NOT extract entities - that's Task 1's job
+    # Remove _enhanced_simple_extraction method
+
+    def _get_entity_aliases_for_matching(self, story_id: str) -> List[Dict]:
+        """Get entity aliases with metadata for matching"""
+        cursor = self.db.execute("""
+            SELECT ea.alias_name, ea.entity_id, ea.alias_type,
+                   e.name as entity_name, e.base_type, e.type
+            FROM entity_aliases ea
+            JOIN entities e ON ea.entity_id = e.entity_id
+            WHERE e.story_id = ?
+            ORDER BY ea.alias_type, ea.alias_name
+        """, (story_id,))
+        
+        return [dict(row) for row in cursor.fetchall()]
+
+    def _find_best_string_match(self, entity_name: str, entity_aliases: List[Dict]) -> Dict:
+        """Find best string match using multiple strategies"""
+        if not entity_aliases:
+            return {'match_type': 'no_match', 'reason': 'no aliases in database'}
+        
+        name_lower = entity_name.lower().strip()
+        
+        # Strategy 1: Exact match (case-insensitive)
+        exact_matches = [alias for alias in entity_aliases 
+                        if alias['alias_name'].lower().strip() == name_lower]
+        
+        if len(exact_matches) == 1:
+            match = exact_matches[0]
+            return {
+                'entity_id': match['entity_id'],
+                'match_type': 'exact',
+                'matched_alias': match['alias_name'],
+                'entity_name': match['entity_name'],
+                'confidence': 1.0
+            }
+        elif len(exact_matches) > 1:
+            return {
+                'match_type': 'ambiguous',
+                'candidates': [
+                    {
+                        'entity_id': m['entity_id'],
+                        'entity_name': m['entity_name'],
+                        'matched_alias': m['alias_name'],
+                        'confidence': 1.0
+                    } for m in exact_matches
+                ],
+                'reason': f'"{entity_name}" exactly matches multiple aliases'
+            }
+        
+        # Strategy 2: Normalized match (remove articles, punctuation)
+        normalized_name = self._normalize_for_matching(entity_name)
+        normalized_matches = []
+        
+        for alias in entity_aliases:
+            normalized_alias = self._normalize_for_matching(alias['alias_name'])
+            if normalized_alias == normalized_name:
+                normalized_matches.append(alias)
+        
+        if len(normalized_matches) == 1:
+            match = normalized_matches[0]
+            return {
+                'entity_id': match['entity_id'],
+                'match_type': 'normalized',
+                'matched_alias': match['alias_name'],
+                'entity_name': match['entity_name'],
+                'confidence': 0.9
+            }
+        elif len(normalized_matches) > 1:
+            return {
+                'match_type': 'ambiguous',
+                'candidates': [
+                    {
+                        'entity_id': m['entity_id'],
+                        'entity_name': m['entity_name'],
+                        'matched_alias': m['alias_name'],
+                        'confidence': 0.9
+                    } for m in normalized_matches
+                ],
+                'reason': f'"{entity_name}" matches multiple aliases after normalization'
+            }
+        
+        # Strategy 3: Fuzzy matching
+        from difflib import SequenceMatcher
+        fuzzy_matches = []
+        threshold = 0.8
+        
+        for alias in entity_aliases:
+            similarity = SequenceMatcher(None, name_lower, alias['alias_name'].lower()).ratio()
+            if similarity >= threshold:
+                fuzzy_matches.append((alias, similarity))
+        
+        if fuzzy_matches:
+            # Sort by similarity
+            fuzzy_matches.sort(key=lambda x: x[1], reverse=True)
+            
+            # Check if top match is significantly better
+            if len(fuzzy_matches) == 1 or fuzzy_matches[0][1] > fuzzy_matches[1][1] + 0.1:
+                best_match, score = fuzzy_matches[0]
+                return {
+                    'entity_id': best_match['entity_id'],
+                    'match_type': 'fuzzy',
+                    'matched_alias': best_match['alias_name'],
+                    'entity_name': best_match['entity_name'],
+                    'confidence': score,
+                    'similarity_score': score
+                }
+            else:
+                # Multiple similar matches
+                return {
+                    'match_type': 'ambiguous',
+                    'candidates': [
+                        {
+                            'entity_id': match[0]['entity_id'],
+                            'entity_name': match[0]['entity_name'],
+                            'matched_alias': match[0]['alias_name'],
+                            'confidence': match[1],
+                            'similarity_score': match[1]
+                        } for match in fuzzy_matches[:5]
+                    ],
+                    'reason': f'"{entity_name}" has multiple fuzzy matches'
+                }
+        
+        # No match found
+        return {
+            'match_type': 'no_match',
+            'reason': f'No suitable matches found for "{entity_name}"'
+        }
+
+    def _normalize_for_matching(self, text: str) -> str:
+        """Normalize text for better matching"""
+        import re
+        import unicodedata
+        
+        # Convert to lowercase and remove diacritics
+        text = unicodedata.normalize('NFD', text.lower())
+        text = ''.join(c for c in text if not unicodedata.combining(c))
+        
+        # Remove punctuation except spaces and hyphens
+        text = re.sub(r'[^\w\s-]', ' ', text)
+        
+        # Remove common articles and words
+        articles = {'the', 'a', 'an', 'my', 'your', 'his', 'her', 'its', 'our', 'their'}
+        words = text.split()
+        filtered_words = [word for word in words if word not in articles and len(word) > 1]
+        
+        return ' '.join(filtered_words).strip()
     
     def _task3_disambiguation(self, story_text: str, story_context: Dict, extract_only: bool) -> Dict[str, Any]:
         """Task 3: LLM-based disambiguation of ambiguous matches"""

@@ -300,41 +300,169 @@ Be conservative - only include entities that are clearly present or referenced.'
         print("-" * 60)
         
         try:
-            agent = self.get_agent('entity', task_id)
-            print(f"Created EntityAgent Task {task_id}")
-            print(f"Agent config: {agent.config['name']}")
-            print(f"Instructions: {agent.config['instructions'][:200]}...")
+            if task_id == 2:
+                # Task 2 requires entity names - ask user or auto-run Task 1
+                print("Task 2 requires entity names from Task 1.")
+                choice = input("1) Auto-run Task 1 first, 2) Provide entity names manually, 3) Cancel: ").strip()
+                
+                entity_names = None
+                if choice == "1":
+                    print("\nRunning Task 1 first...")
+                    agent1 = self.get_agent('entity', 1)
+                    task1_result = agent1.execute(
+                        story_text=story_text,
+                        story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
+                        extract_only=True
+                    )
+                    
+                    if task1_result.get('success') and 'raw_names' in task1_result:
+                        entity_names = task1_result['raw_names']
+                        print(f"Task 1 extracted: {entity_names}")
+                    else:
+                        print(f"Task 1 failed: {task1_result.get('error', 'Unknown error')}")
+                        return
+                        
+                elif choice == "2":
+                    names_input = input("Enter entity names (comma-separated): ").strip()
+                    if names_input:
+                        entity_names = [name.strip() for name in names_input.split(',')]
+                        print(f"Using provided entity names: {entity_names}")
+                    else:
+                        print("No entity names provided, cancelling.")
+                        return
+                else:
+                    print("Cancelled.")
+                    return
+                
+                # Now run Task 2 with entity names
+                print(f"\nRunning Task 2 with entity names: {entity_names}")
+                agent = self.get_agent('entity', task_id)
+                result = agent.execute(
+                    story_text=story_text,
+                    story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
+                    extract_only=True,
+                    entity_names=entity_names  # Pass the entity names
+                )
+            else:
+                # Task 1 and Task 3 work normally
+                agent = self.get_agent('entity', task_id)
+                print(f"Created EntityAgent Task {task_id}")
+                print(f"Agent config: {agent.config['name']}")
+                print(f"Instructions: {agent.config['instructions'][:200]}...")
+                
+                result = agent.execute(
+                    story_text=story_text,
+                    story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
+                    extract_only=True
+                )
             
-            result = agent.execute(
+            # Display results
+            if result['success']:
+                print(f"✓ Task {task_id} Success:")
+                print(f"  Task type: {result.get('task', 'unknown')}")
+                
+                if 'raw_names' in result:
+                    print(f"  Raw names: {result['raw_names']}")
+                    
+                if 'matching_results' in result:
+                    print(f"  Matching results: {len(result['matching_results'])} items")
+                    for name, match in result['matching_results'].items():
+                        print(f"    '{name}' -> {match['match_type']}")
+                        if match['match_type'] == 'exact':
+                            print(f"      Matched: {match['entity_name']} (ID: {match['entity_id']})")
+                        elif match['match_type'] in ['normalized', 'fuzzy']:
+                            print(f"      Matched: {match['entity_name']} (ID: {match['entity_id']})")
+                            if 'confidence' in match:
+                                print(f"      Confidence: {match['confidence']:.2f}")
+                        elif match['match_type'] == 'ambiguous':
+                            print(f"      Candidates: {len(match['candidates'])}")
+                            for candidate in match['candidates'][:3]:
+                                print(f"        - {candidate['entity_name']} (ID: {candidate['entity_id']})")
+                        elif match['match_type'] == 'no_match':
+                            reason = match.get('reason', 'Unknown')
+                            print(f"      Reason: {reason}")
+                            
+                if 'strategy_stats' in result:
+                    stats = result['strategy_stats']
+                    print(f"  Strategy stats: {stats}")
+                    
+            else:
+                print(f"✗ Task {task_id} Failed: {result.get('error', 'Unknown error')}")
+                if 'requires' in result:
+                    print(f"  Requires: {result['requires']}")
+                    
+        except Exception as e:
+            print(f"✗ Exception in Task {task_id}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # Also add a pipeline test method
+    def test_entity_pipeline(self, story_text: str, story_id: str = "test"):
+        """Test full entity pipeline: Task 1 -> Task 2 -> Task 3"""
+        print("=" * 60)
+        print("TESTING FULL ENTITY PIPELINE")
+        print(f"Text: '{story_text}'")
+        print("=" * 60)
+        
+        try:
+            # Task 1: Extract entity names
+            print("\n1. RUNNING TASK 1 (Entity Extraction)")
+            print("-" * 40)
+            agent1 = self.get_agent('entity', 1)
+            task1_result = agent1.execute(
                 story_text=story_text,
                 story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
                 extract_only=True
             )
             
-            if result['success']:
-                print(f"✓ Task {task_id} Success:")
-                print(f"  Task type: {result.get('task', 'unknown')}")
-                if 'raw_names' in result:
-                    print(f"  Raw names: {result['raw_names']}")
-                if 'matching_results' in result:
-                    print(f"  Matching results: {len(result['matching_results'])} items")
-                    for name, match in result['matching_results'].items():
-                        print(f"    {name} -> {match['match_type']}")
-                        if match['match_type'] == 'exact':
-                            print(f"      Matched: {match['entity_name']} (ID: {match['entity_id']})")
-                        elif match['match_type'] in ['substring', 'fuzzy']:
-                            print(f"      Matched: {match['entity_name']} (ID: {match['entity_id']})")
-                            if 'score' in match:
-                                print(f"      Score: {match['score']:.2f}")
-                        elif match['match_type'] == 'ambiguous':
-                            print(f"      Candidates: {len(match['candidates'])}")
-                            for candidate in match['candidates'][:3]:  # Show first 3
-                                print(f"        - {candidate['entity_name']} (ID: {candidate['entity_id']})")
-            else:
-                print(f"✗ Task {task_id} Failed: {result.get('error', 'Unknown error')}")
-                
+            if not task1_result.get('success'):
+                print(f"✗ Task 1 failed: {task1_result.get('error')}")
+                return
+            
+            entity_names = task1_result.get('raw_names', [])
+            print(f"✓ Task 1 extracted {len(entity_names)} entities: {entity_names}")
+            
+            if not entity_names:
+                print("No entities found, stopping pipeline.")
+                return
+            
+            # Task 2: String matching
+            print("\n2. RUNNING TASK 2 (String Matching)")
+            print("-" * 40)
+            agent2 = self.get_agent('entity', 2)
+            task2_result = agent2.execute(
+                story_text=story_text,
+                story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
+                extract_only=True,
+                entity_names=entity_names
+            )
+            
+            if not task2_result.get('success'):
+                print(f"✗ Task 2 failed: {task2_result.get('error')}")
+                return
+            
+            matching_results = task2_result.get('matching_results', {})
+            print(f"✓ Task 2 matched {len(matching_results)} entities")
+            
+            # Show matching summary
+            for name, match in matching_results.items():
+                match_type = match.get('match_type', 'unknown')
+                if match_type == 'no_match':
+                    print(f"  '{name}' -> No match")
+                elif match_type == 'ambiguous':
+                    print(f"  '{name}' -> Ambiguous ({len(match.get('candidates', []))} candidates)")
+                else:
+                    entity_name = match.get('entity_name', 'Unknown')
+                    confidence = match.get('confidence', 0)
+                    print(f"  '{name}' -> {entity_name} ({match_type}, {confidence:.2f})")
+            
+            # Task 3: Disambiguation (when implemented)
+            print("\n3. TASK 3 (Disambiguation) - Not yet implemented")
+            
+            print(f"\n✓ Pipeline completed successfully!")
+            
         except Exception as e:
-            print(f"✗ Exception in Task {task_id}: {e}")
+            print(f"✗ Pipeline failed: {e}")
             import traceback
             traceback.print_exc()
     
@@ -422,6 +550,7 @@ Be conservative - only include entities that are clearly present or referenced.'
             print(f"  Instructions: {agent['agent_instructions'][:300]}...")
             print(f"  Function calls: {agent['agent_function_calls']}")
     
+    # Update interactive_mode to include pipeline command
     def interactive_mode(self):
         """Interactive CLI"""
         print("=" * 60)
@@ -431,6 +560,7 @@ Be conservative - only include entities that are clearly present or referenced.'
         print("  entity <text>      - Test EntityAgent (with task selection)")
         print("  entity1 <text>     - Test EntityAgent Task 1 (raw extraction)")
         print("  entity2 <text>     - Test EntityAgent Task 2 (string matching)")
+        print("  pipeline <text>    - Test full entity pipeline (Task 1->2->3)")
         print("  db                 - Show database state")
         print("  agents             - Show agent details")
         print("  agents <type>      - Show specific agent type details")
@@ -454,6 +584,8 @@ Be conservative - only include entities that are clearly present or referenced.'
                     self.test_specific_task(1, args)
                 elif cmd == 'entity2':
                     self.test_specific_task(2, args)
+                elif cmd == 'pipeline':
+                    self.test_entity_pipeline(args)
                 elif cmd == 'db':
                     self.show_database_state()
                 elif cmd == 'agents':
