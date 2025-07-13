@@ -1,6 +1,6 @@
 -- STORYWRITER DATABASE WITH EXPLICIT COLUMN RELATIONSHIPS
 -- Core principle: Everything is an entity. Relationships connect states of entities.
--- Extended with story generation and AI agent tracking
+-- Extended with story generation, AI agent tracking, and PERCEPTIONS system
 
 -- Class system for dynamic entity attributes and constraints
 CREATE TABLE classes (
@@ -120,6 +120,58 @@ CREATE TABLE relationships (
     FOREIGN KEY (state_id2) REFERENCES states(state_id)
 );
 
+-- NEW: PERCEPTIONS - How states interpret other states based on their goals and history
+CREATE TABLE perceptions (
+    perception_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    story_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    scene_id TEXT NOT NULL,
+    beat_id TEXT NOT NULL,
+    
+    -- WHO is perceiving: a state perceiving another state
+    perceiver_state_id INTEGER NOT NULL, -- The state doing the perceiving
+    perceived_state_id INTEGER NOT NULL, -- The state being perceived
+    
+    -- THE INTERPRETATION (mirroring state table structure but from perceiver's perspective)
+    perception_description TEXT, -- How perceiver sees the perceived state
+    perception_description_detail TEXT, -- Detailed explanation of the interpretation
+    
+    perception_form_description TEXT, -- How perceiver sees the perceived state's form
+    perception_form_description_detail TEXT,
+    perception_form_tags JSON,
+    
+    perception_function_description TEXT, -- How perceiver sees the perceived state's function
+    perception_function_description_detail TEXT,
+    perception_function_tags JSON,
+    
+    perception_character_description TEXT, -- How perceiver sees the perceived state's character
+    perception_character_description_detail TEXT,
+    perception_character_tags JSON,
+    
+    perception_goal_description TEXT, -- How perceiver sees the perceived state's goals
+    perception_goal_description_detail TEXT,
+    perception_goal_tags JSON,
+    
+    perception_history_description TEXT, -- How perceiver sees the perceived state's history
+    perception_history_description_detail TEXT,
+    perception_history_tags JSON,
+    
+    -- PERCEPTION METADATA
+    confidence_level REAL DEFAULT 0.5, -- How certain they are (0.0-1.0)
+    emotional_valence REAL DEFAULT 0.0, -- How they feel about it (-1.0 to 1.0)
+    attention_priority REAL DEFAULT 0.5, -- How much mental focus this gets (0.0-1.0)
+    
+    -- CONTEXTUAL INFLUENCE
+    goal_alignment_score REAL DEFAULT 0.0, -- How much this perception supports perceiver's goals (-1.0 to 1.0)
+    historical_context TEXT, -- How past experiences shape this interpretation
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (perceiver_state_id) REFERENCES states(state_id),
+    FOREIGN KEY (perceived_state_id) REFERENCES states(state_id)
+);
+
 -- Representations for visual/audio assets
 CREATE TABLE representations (
     representation_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,7 +216,7 @@ CREATE TABLE stories (
 
 -- NEW: Agents table for agent definitions and configuration
 CREATE TABLE agents (
-    agent_id INTEGER PRIMARY KEY AUTOINCREMENT, -- ✅ Changed to auto-incrementing integer
+    agent_id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_type TEXT NOT NULL, -- 'PrepAgent', 'GeneratorAgent', 'EvalAgent', 'ContinuityGuard', 'EntityAgent'
     agent_task_id INTEGER NOT NULL, -- Task ID within the agent type (1=raw extraction, 2=classification, etc.)
     agent_name TEXT, -- Human-readable name
@@ -189,7 +241,7 @@ CREATE TABLE agent_executions (
     agent_execution_id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- Agent reference
-    agent_id INTEGER NOT NULL, -- ✅ Changed to integer to match agents table
+    agent_id INTEGER NOT NULL,
     
     -- Execution context
     story_id TEXT NOT NULL,
@@ -245,6 +297,17 @@ CREATE INDEX idx_relationships_beat ON relationships(beat_id);
 CREATE INDEX idx_relationships_state1 ON relationships(state_id1);
 CREATE INDEX idx_relationships_state2 ON relationships(state_id2);
 CREATE INDEX idx_relationships_description ON relationships(description);
+
+-- NEW: Indexes for perceptions table
+CREATE INDEX idx_perceptions_story ON perceptions(story_id);
+CREATE INDEX idx_perceptions_scene ON perceptions(scene_id);
+CREATE INDEX idx_perceptions_beat ON perceptions(beat_id);
+CREATE INDEX idx_perceptions_perceiver_state ON perceptions(perceiver_state_id);
+CREATE INDEX idx_perceptions_perceived_state ON perceptions(perceived_state_id);
+CREATE INDEX idx_perceptions_confidence ON perceptions(confidence_level);
+CREATE INDEX idx_perceptions_valence ON perceptions(emotional_valence);
+CREATE INDEX idx_perceptions_goal_alignment ON perceptions(goal_alignment_score);
+CREATE INDEX idx_perceptions_created ON perceptions(created_at);
 
 CREATE INDEX idx_representations_relationship ON representations(relationship_id);
 CREATE INDEX idx_representations_state ON representations(state_id);
