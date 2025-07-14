@@ -1,6 +1,6 @@
 -- STORYWRITER DATABASE WITH EXPLICIT COLUMN RELATIONSHIPS
 -- Core principle: Everything is an entity. Relationships connect states of entities.
--- Extended with story generation, AI agent tracking, and PERCEPTIONS system
+-- Extended with story generation, AI agent tracking, PERCEPTIONS, and AWARENESS system
 
 -- Class system for dynamic entity attributes and constraints
 CREATE TABLE classes (
@@ -120,7 +120,7 @@ CREATE TABLE relationships (
     FOREIGN KEY (state_id2) REFERENCES states(state_id)
 );
 
--- NEW: PERCEPTIONS - How states interpret other states based on their goals and history
+-- PERCEPTIONS - How states interpret other states based on their goals and history
 CREATE TABLE perceptions (
     perception_id INTEGER PRIMARY KEY AUTOINCREMENT,
     story_id TEXT NOT NULL,
@@ -172,6 +172,60 @@ CREATE TABLE perceptions (
     FOREIGN KEY (perceived_state_id) REFERENCES states(state_id)
 );
 
+-- NEW: AWARENESS - Finite attention/context management system
+-- This table manages what gets included in story generation context based on weighted importance
+CREATE TABLE awareness (
+    awareness_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    story_id TEXT NOT NULL,
+    timeline_id TEXT NOT NULL,
+    scene_id TEXT NOT NULL,
+    beat_id TEXT NOT NULL,
+    
+    -- CONTEXT REFERENCE - exactly one of these will be non-null
+    state_id INTEGER, -- Reference to a state that's in awareness
+    relationship_id INTEGER, -- Reference to a relationship that's in awareness  
+    perception_id INTEGER, -- Reference to a perception that's in awareness
+    
+    -- AWARENESS METRICS
+    weight REAL NOT NULL DEFAULT 0.5, -- Current awareness weight (0.0-1.0)
+    decay_rate REAL NOT NULL DEFAULT 0.95, -- How fast weight decays without attention (0.0-1.0)
+    
+    -- ATTENTION TRACKING
+    last_user_mention TIMESTAMP, -- When user last directly mentioned this context
+    last_story_mention TIMESTAMP, -- When this was last included in generated story
+    mention_count INTEGER DEFAULT 0, -- Total times user has mentioned this
+    story_inclusion_count INTEGER DEFAULT 0, -- Total times included in story generation
+    
+    -- STATUS AND LIFECYCLE
+    status TEXT DEFAULT 'active', -- 'active', 'fading', 'dormant', 'archived'
+    
+    -- CONTEXT METADATA
+    context_type TEXT NOT NULL, -- 'state', 'relationship', 'perception' (derived from which ID is set)
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_weight_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- CONSTRAINTS
+    FOREIGN KEY (state_id) REFERENCES states(state_id) ON DELETE CASCADE,
+    FOREIGN KEY (relationship_id) REFERENCES relationships(relationship_id) ON DELETE CASCADE,
+    FOREIGN KEY (perception_id) REFERENCES perceptions(perception_id) ON DELETE CASCADE,
+    
+    -- Ensure exactly one context reference is set
+    CHECK (
+        (state_id IS NOT NULL AND relationship_id IS NULL AND perception_id IS NULL) OR
+        (state_id IS NULL AND relationship_id IS NOT NULL AND perception_id IS NULL) OR
+        (state_id IS NULL AND relationship_id IS NULL AND perception_id IS NOT NULL)
+    ),
+    
+    -- Ensure context_type matches the set reference
+    CHECK (
+        (context_type = 'state' AND state_id IS NOT NULL) OR
+        (context_type = 'relationship' AND relationship_id IS NOT NULL) OR
+        (context_type = 'perception' AND perception_id IS NOT NULL)
+    )
+);
+
 -- Representations for visual/audio assets
 CREATE TABLE representations (
     representation_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,7 +241,7 @@ CREATE TABLE representations (
     FOREIGN KEY (state_id) REFERENCES states(state_id)
 );
 
--- NEW: Stories table for generated story content with versioning
+-- Stories table for generated story content with versioning
 CREATE TABLE stories (
     story_entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
     story_id TEXT NOT NULL,
@@ -214,10 +268,10 @@ CREATE TABLE stories (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- NEW: Agents table for agent definitions and configuration
+-- Agents table for agent definitions and configuration
 CREATE TABLE agents (
     agent_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_type TEXT NOT NULL, -- 'PrepAgent', 'GeneratorAgent', 'EvalAgent', 'ContinuityGuard', 'EntityAgent'
+    agent_type TEXT NOT NULL, -- 'PrepAgent', 'GeneratorAgent', 'EvalAgent', 'ContinuityGuard', 'EntityAgent', 'AwarenessAgent'
     agent_task_id INTEGER NOT NULL, -- Task ID within the agent type (1=raw extraction, 2=classification, etc.)
     agent_name TEXT, -- Human-readable name
     agent_description TEXT, -- What this specific task does
@@ -236,7 +290,7 @@ CREATE TABLE agents (
     UNIQUE(agent_type, agent_task_id) -- Prevent duplicate task IDs for same agent type
 );
 
--- NEW: Agent executions table for execution tracking
+-- Agent executions table for execution tracking
 CREATE TABLE agent_executions (
     agent_execution_id INTEGER PRIMARY KEY AUTOINCREMENT,
     
@@ -298,7 +352,7 @@ CREATE INDEX idx_relationships_state1 ON relationships(state_id1);
 CREATE INDEX idx_relationships_state2 ON relationships(state_id2);
 CREATE INDEX idx_relationships_description ON relationships(description);
 
--- NEW: Indexes for perceptions table
+-- Indexes for perceptions table
 CREATE INDEX idx_perceptions_story ON perceptions(story_id);
 CREATE INDEX idx_perceptions_scene ON perceptions(scene_id);
 CREATE INDEX idx_perceptions_beat ON perceptions(beat_id);
@@ -309,11 +363,26 @@ CREATE INDEX idx_perceptions_valence ON perceptions(emotional_valence);
 CREATE INDEX idx_perceptions_goal_alignment ON perceptions(goal_alignment_score);
 CREATE INDEX idx_perceptions_created ON perceptions(created_at);
 
+-- NEW: Indexes for awareness table - critical for performance
+CREATE INDEX idx_awareness_story ON awareness(story_id);
+CREATE INDEX idx_awareness_scene ON awareness(scene_id);
+CREATE INDEX idx_awareness_beat ON awareness(beat_id);
+CREATE INDEX idx_awareness_weight ON awareness(weight);
+CREATE INDEX idx_awareness_status ON awareness(status);
+CREATE INDEX idx_awareness_context_type ON awareness(context_type);
+CREATE INDEX idx_awareness_state_id ON awareness(state_id);
+CREATE INDEX idx_awareness_relationship_id ON awareness(relationship_id);
+CREATE INDEX idx_awareness_perception_id ON awareness(perception_id);
+CREATE INDEX idx_awareness_last_mention ON awareness(last_user_mention);
+CREATE INDEX idx_awareness_weight_status ON awareness(weight, status); -- Composite for active context queries
+CREATE INDEX idx_awareness_story_weight ON awareness(story_id, weight DESC); -- For top-weighted context retrieval
+CREATE INDEX idx_awareness_last_weight_update ON awareness(last_weight_update);
+
 CREATE INDEX idx_representations_relationship ON representations(relationship_id);
 CREATE INDEX idx_representations_state ON representations(state_id);
 CREATE INDEX idx_representations_type ON representations(type);
 
--- NEW: Indexes for stories table
+-- Indexes for stories table
 CREATE INDEX idx_stories_story_id ON stories(story_id);
 CREATE INDEX idx_stories_scene ON stories(scene_id);
 CREATE INDEX idx_stories_beat ON stories(beat_id);
@@ -322,13 +391,13 @@ CREATE INDEX idx_stories_revision ON stories(revision);
 CREATE INDEX idx_stories_status ON stories(status);
 CREATE INDEX idx_stories_created_at ON stories(created_at);
 
--- NEW: Indexes for agents table
+-- Indexes for agents table
 CREATE INDEX idx_agents_type ON agents(agent_type);
 CREATE INDEX idx_agents_task_id ON agents(agent_task_id);
 CREATE INDEX idx_agents_type_task ON agents(agent_type, agent_task_id);
 CREATE INDEX idx_agents_is_active ON agents(is_active);
 
--- NEW: Indexes for agent_executions table
+-- Indexes for agent_executions table
 CREATE INDEX idx_agent_executions_agent_id ON agent_executions(agent_id);
 CREATE INDEX idx_agent_executions_story_id ON agent_executions(story_id);
 CREATE INDEX idx_agent_executions_request_time ON agent_executions(request_time);
@@ -345,3 +414,45 @@ INSERT INTO classes (type, parent_class_id, details, attributes, constraints) VA
 ('feeling', NULL, 'Base class for all emotional states and reactions', '{}', '{}'),
 ('action', NULL, 'Base class for all physical and mental actions', '{}', '{}'),
 ('activity', NULL, 'Base class for all ongoing processes and activities', '{}', '{}');
+
+-- NEW: Triggers for maintaining awareness context_type consistency
+-- Automatically set context_type based on which reference is populated
+CREATE TRIGGER set_awareness_context_type_insert
+AFTER INSERT ON awareness
+WHEN NEW.context_type IS NULL OR NEW.context_type = ''
+BEGIN
+    UPDATE awareness 
+    SET context_type = CASE 
+        WHEN NEW.state_id IS NOT NULL THEN 'state'
+        WHEN NEW.relationship_id IS NOT NULL THEN 'relationship' 
+        WHEN NEW.perception_id IS NOT NULL THEN 'perception'
+        ELSE 'unknown'
+    END,
+    updated_at = CURRENT_TIMESTAMP
+    WHERE awareness_id = NEW.awareness_id;
+END;
+
+CREATE TRIGGER set_awareness_context_type_update
+AFTER UPDATE ON awareness
+WHEN (OLD.state_id != NEW.state_id OR OLD.relationship_id != NEW.relationship_id OR OLD.perception_id != NEW.perception_id)
+BEGIN
+    UPDATE awareness 
+    SET context_type = CASE 
+        WHEN NEW.state_id IS NOT NULL THEN 'state'
+        WHEN NEW.relationship_id IS NOT NULL THEN 'relationship'
+        WHEN NEW.perception_id IS NOT NULL THEN 'perception'
+        ELSE 'unknown'
+    END,
+    updated_at = CURRENT_TIMESTAMP
+    WHERE awareness_id = NEW.awareness_id;
+END;
+
+-- Trigger to update last_weight_update timestamp when weight changes
+CREATE TRIGGER update_awareness_weight_timestamp
+AFTER UPDATE OF weight ON awareness
+BEGIN
+    UPDATE awareness 
+    SET last_weight_update = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE awareness_id = NEW.awareness_id;
+END;

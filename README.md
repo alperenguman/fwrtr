@@ -18,3 +18,6 @@ Form, Function, Character, Goal, History
 
 ## Perceptions
 States' interpretations of states. Perspectives.
+
+## Awareness
+Weights system to determine what makes it into the finite input context space. Attention decay to clear the palate for new creation.
