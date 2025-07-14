@@ -6,15 +6,17 @@ Tech stack is a SQLite db, python-flask-socketio backend and html/js/css fronten
 
 
 ## Classes
-Definition of a concepts with inheritable attributes
+Definition of concepts with inheritable attributes.
 
 ## Entities
-Instances of a classes defined by:
-Form, Function, Character, Goal, History
+Instances of classes defined by:
+Form, Function, Character, Goal, History.
 
 ## States
+Aspects of an entity at a moment in time. Temporal, dynamic.
 
 ## Relationships
+State-to-state connections.
 
 ## Perceptions
 States' interpretations of states. Perspectives.

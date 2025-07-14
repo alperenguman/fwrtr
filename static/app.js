@@ -83,8 +83,45 @@ if (typeof window.storywriterApp === 'undefined') {
         addSystemMessage(entity.name + ' has been updated');
     });
 
+    socket.on('generation_complete', function(data) {
+        console.log('✓ Generation complete:', data);
+        
+        // Flash the background
+        flashBackground(data.flash_color || 'red');
+        
+        // Add the generated story to chat
+        addGeneratedStory(data.generated_text, data.generation_mode);
+        
+        // Re-enable input
+        document.getElementById('messageInput').disabled = false;
+        document.getElementById('sendButton').disabled = false;
+        document.getElementById('sendButton').textContent = 'Send';
+    });
+
+    socket.on('generation_error', function(data) {
+        console.error('✗ Generation error:', data);
+        
+        // Flash red for error
+        flashBackground('red');
+        
+        // Show error message
+        addSystemMessage('❌ Generation failed: ' + data.error);
+        
+        // Re-enable input
+        document.getElementById('messageInput').disabled = false;
+        document.getElementById('sendButton').disabled = false;
+        document.getElementById('sendButton').textContent = 'Send';
+    });
+
     socket.on('story_response', function(data) {
-        addAIMessage(data.content);
+        console.log('Story response received:', data);
+        if (data.success !== false) {
+            // Successful generation - treat like a generated story
+            addGeneratedStory(data.content, data.generation_mode || 'chat');
+        } else {
+            // Failed generation
+            addSystemMessage('❌ Generation failed: ' + (data.error || 'Unknown error'));
+        }
     });
 
     socket.on('error', function(error) {
@@ -143,6 +180,44 @@ if (typeof window.storywriterApp === 'undefined') {
         messageDiv.innerHTML = text + ' <span style="color: #555; font-size: 11px;">' + new Date().toLocaleTimeString() + '</span>';
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function addGeneratedStory(content, generationMode) {
+        const chatMessages = document.getElementById('chatMessages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message generated ${generationMode}`;
+        
+        // Add generation mode indicator
+        const modeIndicator = generationMode === 'immediate' ? '⚡ Immediate' : '🔄 Simulation';
+        const timestamp = new Date().toLocaleTimeString();
+        
+        messageDiv.innerHTML = `
+            <div class="generation-header">
+                <span class="generation-mode">${modeIndicator}</span>
+                <span class="generation-time">${timestamp}</span>
+            </div>
+            <div class="generation-content">${processEntityLinks(content)}</div>
+        `;
+        
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        setTimeout(function() {
+            observeSceneBoundaries();
+        }, 100);
+    }
+
+    function flashBackground(color) {
+        const body = document.body;
+        const originalClass = body.className;
+        
+        // Add flash class
+        body.classList.add(`flash-${color}`);
+        
+        // Remove after animation
+        setTimeout(() => {
+            body.classList.remove(`flash-${color}`);
+        }, 1000);
     }
 
     function addAIMessage(content) {
@@ -233,7 +308,7 @@ if (typeof window.storywriterApp === 'undefined') {
         }
         
         content += '</div></div><br>';
-        content += '<p><em>Click on any highlighted entity to explore its details, scene/beat boundaries for context, or continue the story below!</em></p>';
+        content += '<p><em>Type story directions and press <strong>Ctrl+Enter</strong> for immediate generation (red flash), or <strong>Enter</strong> for chat!</em></p>';
         
         document.getElementById('chatMessages').innerHTML = '<div class="message ai">' + content + '</div>';
         
@@ -1070,6 +1145,8 @@ if (typeof window.storywriterApp === 'undefined') {
         document.getElementById('entityEditor').style.display = 'none';
         document.getElementById('chatMessages').style.display = 'block';
     }
+
+    function updateEntityInUI(entity) {
         updateEntityList();
         
         if (document.getElementById('detailPane').classList.contains('active')) {
@@ -1094,6 +1171,36 @@ if (typeof window.storywriterApp === 'undefined') {
 
     let currentEditingEntity = null;
     let editingEntityData = {};
+
+    function handleImmediateGeneration(userInput) {
+        console.log('🔥 Starting immediate generation with input:', userInput);
+        
+        // Disable input during generation
+        document.getElementById('messageInput').disabled = true;
+        document.getElementById('sendButton').disabled = true;
+        document.getElementById('sendButton').textContent = 'Generating...';
+        
+        // Add generation indicator
+        addSystemMessage('🔥 Starting immediate generation...');
+        
+        const requestData = {
+            content: userInput,
+            story_id: '1',
+            scene_id: currentScene || '1:s1',
+            beat_id: generateNextBeatId()
+        };
+        
+        console.log('Sending generate_immediate request:', requestData);
+        
+        // Send generation request
+        socket.emit('generate_immediate', requestData);
+    }
+    
+    function generateNextBeatId() {
+        // Simple beat ID generation - in real system this would be more sophisticated
+        const timestamp = Date.now().toString(36);
+        return `1:b${timestamp}`;
+    }
 
     // Add this to the DOMContentLoaded event listener
     document.addEventListener('DOMContentLoaded', function() {
@@ -1152,7 +1259,7 @@ if (typeof window.storywriterApp === 'undefined') {
             }
         });
         
-        document.getElementById('sendButton').addEventListener('click', function() {
+        document.getElementById('sendButton').addEventListener('click', function(e) {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
             
@@ -1163,16 +1270,42 @@ if (typeof window.storywriterApp === 'undefined') {
                 userMessage.textContent = message;
                 chatMessages.appendChild(userMessage);
                 
-                socket.emit('user_message', {content: message});
+                // Check for generation mode (ctrl+enter for immediate generation)
+                const isImmediate = e && (e.ctrlKey || e.metaKey || window.lastKeyEvent && (window.lastKeyEvent.ctrlKey || window.lastKeyEvent.metaKey));
+                
+                if (isImmediate) {
+                    // Ctrl+Enter: Immediate generation (red flash) with full context
+                    handleImmediateGeneration(message);
+                } else {
+                    // Regular Enter: Simple chat-style generation
+                    socket.emit('user_message', {
+                        content: message,
+                        story_id: '1',
+                        scene_id: currentScene || '1:s1',
+                        beat_id: generateNextBeatId()
+                    });
+                }
                 
                 input.value = '';
                 chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                // Clear the stored event
+                window.lastKeyEvent = null;
             }
         });
         
         document.getElementById('messageInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                document.getElementById('sendButton').click();
+                // Store the event for the send button handler
+                window.lastKeyEvent = e;
+                
+                if (e.ctrlKey || e.metaKey) {
+                    // Ctrl+Enter for immediate generation
+                    document.getElementById('sendButton').click();
+                } else {
+                    // Regular enter for chat
+                    document.getElementById('sendButton').click();
+                }
             }
         });
     });
@@ -1185,5 +1318,7 @@ if (typeof window.storywriterApp === 'undefined') {
         sectionOrder: sectionOrder,
         showEntityDetails: showEntityDetails,
         addSystemMessage: addSystemMessage,
-        addAIMessage: addAIMessage
+        addAIMessage: addAIMessage,
+        handleImmediateGeneration: handleImmediateGeneration
     };
+}

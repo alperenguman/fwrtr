@@ -1,3 +1,102 @@
+
+/* Flash Background Effects */
+@keyframes flash-red {
+    0% { background-color: rgba(255, 107, 107, 0.1); }
+    50% { background-color: rgba(255, 107, 107, 0.3); }
+    100% { background-color: rgba(0, 0, 0, 1); }
+}
+
+@keyframes flash-yellow {
+    0% { background-color: rgba(255, 255, 107, 0.1); }
+    50% { background-color: rgba(255, 255, 107, 0.3); }
+    100% { background-color: rgba(0, 0, 0, 1); }
+}
+
+@keyframes flash-green {
+    0% { background-color: rgba(107, 255, 107, 0.1); }
+    50% { background-color: rgba(107, 255, 107, 0.3); }
+    100% { background-color: rgba(0, 0, 0, 1); }
+}
+
+body.flash-red {
+    animation: flash-red 1s ease-in-out;
+}
+
+body.flash-yellow {
+    animation: flash-yellow 1s ease-in-out;
+}
+
+body.flash-green {
+    animation: flash-green 1s ease-in-out;
+}
+
+/* Generated Story Styling */
+.message.generated {
+    background: #1a1a1a;
+    border-left: 4px solid #ff6b6b;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 8px;
+    position: relative;
+}
+
+.message.generated.immediate {
+    border-left-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.05);
+}
+
+.message.generated.simulation {
+    border-left-color: #ffff6b;
+    background: rgba(255, 255, 107, 0.05);
+}
+
+.generation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #333;
+}
+
+.generation-mode {
+    color: #ff6b6b;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.generation-time {
+    color: #666;
+    font-size: 11px;
+}
+
+.generation-content {
+    color: #e0e0e0;
+    line-height: 1.6;
+    font-size: 15px;
+}
+
+.message.generated.simulation .generation-mode {
+    color: #ffff6b;
+}
+
+/* Input Hints */
+.input-container::after {
+    content: "Enter to chat • Ctrl+Enter for immediate generation";
+    position: absolute;
+    bottom: -20px;
+    left: 0;
+    font-size: 11px;
+    color: #666;
+    font-style: italic;
+}
+
+.input-container {
+    position: relative;
+}
+
 /* Custom Scrollbars */
 .chat-messages::-webkit-scrollbar,
 .entity-list::-webkit-scrollbar,
