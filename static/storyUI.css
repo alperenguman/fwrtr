@@ -1,0 +1,320 @@
+/* Story UI Styles */
+/* Handles chat messages, story display, scene/beat observers, and generation effects */
+
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a0a;
+    border-right: 1px solid #333;
+}
+
+.chat-header {
+    background: #111;
+    padding: 15px 20px;
+    border-bottom: 1px solid #333;
+}
+
+.chat-header h1 {
+    color: #ff6b6b;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    scroll-behavior: smooth;
+}
+
+.message {
+    margin-bottom: 20px;
+    line-height: 1.6;
+    font-size: 15px;
+    max-width: 120ch;
+    word-wrap: break-word;
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.message.user {
+    background: #1a1a1a;
+    padding: 15px;
+    border-left: 3px solid #ff6b6b;
+    margin-left: 20px;
+    border-radius: 8px;
+}
+
+.message.ai {
+    background: #111111;
+    padding: 15px;
+    margin-right: 20px;
+    border-radius: 8px;
+}
+
+.message.system {
+    background: #0d1b2a;
+    padding: 10px 15px;
+    border-left: 3px solid #4a90e2;
+    font-size: 13px;
+    color: #aaa;
+    margin: 5px 0;
+    border-radius: 6px;
+}
+
+/* Flash Background Effects */
+@keyframes flash-red {
+    0% { background-color: rgba(255, 107, 107, 0.1); }
+    50% { background-color: rgba(255, 107, 107, 0.3); }
+    100% { background-color: rgba(0, 0, 0, 1); }
+}
+
+@keyframes flash-yellow {
+    0% { background-color: rgba(255, 255, 107, 0.1); }
+    50% { background-color: rgba(255, 255, 107, 0.3); }
+    100% { background-color: rgba(0, 0, 0, 1); }
+}
+
+@keyframes flash-green {
+    0% { background-color: rgba(107, 255, 107, 0.1); }
+    50% { background-color: rgba(107, 255, 107, 0.3); }
+    100% { background-color: rgba(0, 0, 0, 1); }
+}
+
+body.flash-red {
+    animation: flash-red 1s ease-in-out;
+}
+
+body.flash-yellow {
+    animation: flash-yellow 1s ease-in-out;
+}
+
+body.flash-green {
+    animation: flash-green 1s ease-in-out;
+}
+
+/* Generated Story Styling */
+.message.generated {
+    background: #1a1a1a;
+    border-left: 4px solid #ff6b6b;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 8px;
+    position: relative;
+}
+
+.message.generated.immediate {
+    border-left-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.05);
+}
+
+.message.generated.simulation {
+    border-left-color: #ffff6b;
+    background: rgba(255, 255, 107, 0.05);
+}
+
+.generation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #333;
+}
+
+.generation-mode {
+    color: #ff6b6b;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.generation-time {
+    color: #666;
+    font-size: 11px;
+}
+
+.generation-content {
+    color: #e0e0e0;
+    line-height: 1.6;
+    font-size: 15px;
+}
+
+.message.generated.simulation .generation-mode {
+    color: #ffff6b;
+}
+
+/* Scene and Beat Boundaries */
+.scene-boundary {
+    margin: 15px 0;
+    padding: 15px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+}
+
+.scene-boundary:hover {
+    background: #222222;
+}
+
+.beat-boundary {
+    padding: 8px 0;
+    margin: 5px 0;
+    position: relative;
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.beat-boundary:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+/* Entity Links */
+.entity {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline;
+    position: relative;
+    color: inherit;
+}
+
+.entity.actor:hover {
+    color: #ff6b6b;
+    text-shadow: 0 0 8px rgba(255, 107, 107, 0.6);
+}
+
+.entity.object:hover {
+    color: #6bb0ff;
+    text-shadow: 0 0 8px rgba(107, 176, 255, 0.6);
+}
+
+.entity.dialogue:hover {
+    color: #ff9966;
+    text-shadow: 0 0 8px rgba(255, 153, 102, 0.6);
+}
+
+.entity.location:hover {
+    color: #ba6bff;
+    text-shadow: 0 0 8px rgba(186, 107, 255, 0.6);
+}
+
+.entity.time:hover {
+    color: #ffff6b;
+    text-shadow: 0 0 8px rgba(255, 255, 107, 0.6);
+}
+
+.entity.thought:hover {
+    color: #6bffa3;
+    text-shadow: 0 0 8px rgba(107, 255, 163, 0.6);
+}
+
+.entity.feeling:hover {
+    color: #ff6bd4;
+    text-shadow: 0 0 8px rgba(255, 107, 212, 0.6);
+}
+
+.entity.action:hover {
+    color: #ffb06b;
+    text-shadow: 0 0 8px rgba(255, 176, 107, 0.6);
+}
+
+.entity.activity:hover {
+    color: #a3ff6b;
+    text-shadow: 0 0 8px rgba(163, 255, 107, 0.6);
+}
+
+/* Chat Input */
+.chat-input {
+    background: #111;
+    padding: 20px;
+    border-top: 1px solid #333;
+}
+
+.input-container {
+    display: flex;
+    gap: 10px;
+    position: relative;
+}
+
+/* Input Hints */
+.input-container::after {
+    content: "Enter to chat • Ctrl+Enter for immediate generation";
+    position: absolute;
+    bottom: -20px;
+    left: 0;
+    font-size: 11px;
+    color: #666;
+    font-style: italic;
+}
+
+#messageInput {
+    flex: 1;
+    background: #0a0a0a;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 12px 15px;
+    font-size: 14px;
+    border-radius: 6px;
+}
+
+#messageInput:focus {
+    outline: none;
+    border-color: #ff6b6b;
+    box-shadow: 0 0 8px rgba(255, 107, 107, 0.3);
+}
+
+.send-btn {
+    background: #ff6b6b;
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    border-radius: 6px;
+}
+
+.send-btn:hover {
+    background: #ff5555;
+    transform: translateY(-1px);
+}
+
+.send-btn:disabled {
+    background: #333;
+    color: #666;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Scrollbar styling for chat messages */
+.chat-messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Firefox scrollbar styling */
+.chat-messages {
+    scrollbar-width: thin;
+    scrollbar-color: #333 #0a0a0a;
+}

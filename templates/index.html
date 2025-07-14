@@ -6,6 +6,12 @@
     <title>Storywriter AI</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    
+    <!-- Load CSS modules -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='leftPane.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entityDetails.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entityEditor.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='storyUI.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -88,6 +94,11 @@
         </div>
     </div>
     
+    <!-- Load JavaScript modules in dependency order -->
+    <script src="{{ url_for('static', filename='leftPane.js') }}"></script>
+    <script src="{{ url_for('static', filename='entityDetails.js') }}"></script>
+    <script src="{{ url_for('static', filename='entityEditor.js') }}"></script>
+    <script src="{{ url_for('static', filename='storyUI.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

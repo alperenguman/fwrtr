@@ -1,0 +1,513 @@
+/* Entity Editor Styles */
+/* Handles the full-screen entity editing mode with AI integration */
+
+.entity-editor {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a0a;
+    overflow: hidden;
+}
+
+.editor-header {
+    background: #111;
+    padding: 15px 20px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.editor-title {
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-entity-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-bottom: 2px;
+}
+
+.editor-entity-type {
+    font-size: 12px;
+    color: #888;
+}
+
+.editor-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.editor-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.save-btn {
+    background: #00ff88;
+    color: #000;
+}
+
+.save-btn:hover {
+    background: #00cc6a;
+    transform: translateY(-1px);
+}
+
+.cancel-btn {
+    background: #666;
+    color: #fff;
+}
+
+.cancel-btn:hover {
+    background: #777;
+}
+
+.editor-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+/* Editor Cards */
+.editor-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 16px;
+    transition: all 0.2s ease;
+}
+
+.editor-card:hover {
+    border-color: #555;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.editor-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.editor-card-title {
+    color: #ff6b6b;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.editor-card-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.card-action-btn {
+    background: #333;
+    border: none;
+    color: #ccc;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.card-action-btn:hover {
+    background: #555;
+    color: #fff;
+}
+
+.card-action-btn.ai-btn {
+    background: #6b6bff;
+    color: #fff;
+}
+
+.card-action-btn.ai-btn:hover {
+    background: #5555ff;
+}
+
+.editor-field {
+    margin-bottom: 12px;
+}
+
+.editor-field-label {
+    color: #aaa;
+    font-size: 11px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.editor-textarea {
+    width: 100%;
+    background: #111;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.4;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 60px;
+}
+
+.editor-textarea:focus {
+    outline: none;
+    border-color: #ff6b6b;
+    box-shadow: 0 0 4px rgba(255, 107, 107, 0.3);
+}
+
+.editor-textarea.detail {
+    min-height: 80px;
+    font-style: italic;
+    color: #ccc;
+}
+
+.field-meta {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-top: 4px;
+    font-size: 10px;
+    color: #666;
+}
+
+.char-count {
+    margin-left: auto;
+}
+
+/* Attributes Editor Card */
+.attributes-editor {
+    grid-column: 1 / -1; /* Span full width */
+    order: -1; /* Move to top */
+}
+
+.attributes-editor-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr; /* 3 columns */
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.attribute-filter-editor {
+    width: 100%;
+    background: #111;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+.attribute-filter-editor:focus {
+    outline: none;
+    border-color: #ff6b6b;
+    box-shadow: 0 0 4px rgba(255, 107, 107, 0.3);
+}
+
+.attribute-editor-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #111;
+    border-radius: 4px;
+    border: 1px solid #333;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.attribute-editor-item:hover {
+    border-color: #555;
+    background: #1a1a1a;
+}
+
+.attribute-editor-item.loading-ai {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.attribute-editor-item.loading-ai::after {
+    content: "AI working...";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #6b6bff;
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.9);
+    padding: 4px 8px;
+    border-radius: 3px;
+    z-index: 10;
+}
+
+.attribute-editor-key {
+    color: #ff6b6b;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: capitalize;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.attribute-editor-value {
+    flex: 1;
+    background: transparent;
+    border: 1px solid #444;
+    color: #ccc;
+    font-size: 12px;
+    padding: 6px 8px;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.attribute-editor-value:focus {
+    outline: none;
+    border-color: #ff6b6b;
+    background: #0a0a0a;
+}
+
+.attribute-editor-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.attribute-editor-actions .card-action-btn {
+    padding: 3px 6px;
+    font-size: 9px;
+    min-width: auto;
+}
+
+.attribute-editor-actions .ai-btn {
+    background: #6b6bff;
+    color: #fff;
+}
+
+.attribute-editor-actions .ai-btn:hover {
+    background: #5555ff;
+}
+
+.attribute-editor-actions .remove-attr {
+    background: #666;
+    color: #fff;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.attribute-editor-actions .remove-attr:hover {
+    background: #ff4444;
+}
+
+/* AI Prompt Modal */
+.ai-prompt-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+.ai-prompt-content {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 0;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+}
+
+.ai-prompt-header {
+    background: #6b6bff;
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ai-prompt-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.ai-prompt-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ai-prompt-body {
+    padding: 20px;
+}
+
+.ai-prompt-body label {
+    display: block;
+    color: #ccc;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.ai-prompt-body textarea {
+    width: 100%;
+    background: #0a0a0a;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.4;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 80px;
+    margin-bottom: 15px;
+}
+
+.ai-prompt-body textarea:focus {
+    outline: none;
+    border-color: #6b6bff;
+    box-shadow: 0 0 8px rgba(107, 107, 255, 0.3);
+}
+
+.ai-prompt-examples {
+    margin-bottom: 15px;
+}
+
+.ai-prompt-examples strong {
+    color: #aaa;
+    font-size: 12px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.example-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.example-chip {
+    background: #333;
+    color: #ccc;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.example-chip:hover {
+    background: #6b6bff;
+    color: white;
+}
+
+.ai-prompt-actions {
+    background: #0a0a0a;
+    padding: 15px 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.ai-prompt-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.cancel-ai {
+    background: #666;
+    color: #fff;
+}
+
+.cancel-ai:hover {
+    background: #777;
+}
+
+.execute-ai {
+    background: #6b6bff;
+    color: #fff;
+}
+
+.execute-ai:hover {
+    background: #5555ff;
+}
+
+.loading-ai {
+    opacity: 0.6;
+    background: #1a1a1a !important;
+    position: relative;
+}
+
+.loading-ai::after {
+    content: "AI working...";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #6b6bff;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Scrollbar styling for editor content */
+.editor-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.editor-content::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+.editor-content::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+.editor-content::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Firefox scrollbar styling */
+.editor-content {
+    scrollbar-width: thin;
+    scrollbar-color: #333 #0a0a0a;
+}

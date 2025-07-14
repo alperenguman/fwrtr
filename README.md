@@ -1,4 +1,4 @@
-# storywriter
+# strywrtr
 
 A real-time storytelling playground where every word is a live object. Creators improvise scenes, branch realities, and perfect showpiece moments without ever losing track of their world.
 
