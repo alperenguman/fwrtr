@@ -90,6 +90,7 @@
 
 .message.ai.raw-output {
     background: #1a1a1a;
+    animation: flash-raw 0.4s ease-in-out;
 }
 
 .message.ai.processed {
@@ -105,6 +106,11 @@
 @keyframes flash-process {
     from { background-color: rgba(255,255,255,0.05); }
     to { background-color: transparent; }
+}
+
+@keyframes flash-raw {
+    from { box-shadow: 0 0 4px rgba(255,255,255,0.4); }
+    to { box-shadow: none; }
 }
 
 @keyframes sparkle {

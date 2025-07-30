@@ -8,6 +8,23 @@ let currentGenSystemMessage = null;
 let showSystemMessages = true;
 let showUserMessages = true;
 let autoEval = true;
+let sceneCounter = 1;
+const beatCounters = { '1:s1': 1 };
+
+function generateNextSceneId() {
+    sceneCounter += 1;
+    const id = '1:s' + sceneCounter;
+    beatCounters[id] = 0;
+    return id;
+}
+
+function generateNextBeatId(sceneId = window.leftPane.getCurrentScene() || '1:s1') {
+    if (!beatCounters[sceneId]) {
+        beatCounters[sceneId] = 0;
+    }
+    beatCounters[sceneId] += 1;
+    return '1:b' + beatCounters[sceneId];
+}
 
 function initializeSceneObserver() {
     if ('IntersectionObserver' in window) {
@@ -201,7 +218,7 @@ function addGeneratedStory(content, generationMode, sceneId, beatId, rawText, st
     messageDiv.className = 'message ai';
 
     sceneId = sceneId || window.leftPane.getCurrentScene() || '1:s1';
-    beatId = beatId || generateNextBeatId();
+    beatId = beatId || generateNextBeatId(sceneId);
 
     const sceneDiv = document.createElement('div');
     sceneDiv.className = 'scene-boundary';
@@ -286,12 +303,14 @@ function applyEvaluationResult(messageEl, data) {
         for (let i = 1; i < segments.length; i++) {
             const seg = segments[i];
             if (seg.new_scene) {
+                const newSceneId = generateNextSceneId();
                 const newScene = document.createElement('div');
                 newScene.className = 'scene-boundary';
-                newScene.dataset.sceneId = 'temp:' + Date.now().toString(36);
+                newScene.dataset.sceneId = newSceneId;
+                const newBeatId = generateNextBeatId(newSceneId);
                 const newBeat = document.createElement('div');
                 newBeat.className = 'beat-boundary';
-                newBeat.dataset.beatId = generateNextBeatId();
+                newBeat.dataset.beatId = newBeatId;
                 const c = document.createElement('div');
                 c.className = 'generation-content';
                 c.innerHTML = formatTextIntoParagraphs(seg.text);
@@ -302,7 +321,8 @@ function applyEvaluationResult(messageEl, data) {
             } else {
                 const newBeat = document.createElement('div');
                 newBeat.className = 'beat-boundary';
-                newBeat.dataset.beatId = generateNextBeatId();
+                const newBeatId = generateNextBeatId(sceneDiv.dataset.sceneId);
+                newBeat.dataset.beatId = newBeatId;
                 const c = document.createElement('div');
                 c.className = 'generation-content';
                 c.innerHTML = formatTextIntoParagraphs(seg.text);
@@ -373,12 +393,14 @@ function generateInitialStory() {
     }
     
     content += '</div></div>';
-    
+
     document.getElementById('chatMessages').innerHTML = '<div class="message ai">' + content + '</div>';
-    
+
     setTimeout(function() {
         observeSceneBoundaries();
         window.leftPane.updateSceneInfo(window.leftPane.getCurrentScene());
+        sceneCounter = 1;
+        beatCounters['1:s1'] = 1;
     }, 100);
 }
 
@@ -400,7 +422,7 @@ function handleImmediateGeneration(userInput) {
         content: userInput,
         story_id: '1',
         scene_id: window.leftPane.getCurrentScene() || '1:s1',
-        beat_id: generateNextBeatId(),
+        beat_id: generateNextBeatId(window.leftPane.getCurrentScene() || '1:s1'),
         skip_eval: !autoEval
     };
 
@@ -429,7 +451,7 @@ function handleChatGeneration(userInput) {
         content: userInput,
         story_id: '1',
         scene_id: window.leftPane.getCurrentScene() || '1:s1',
-        beat_id: generateNextBeatId(),
+        beat_id: generateNextBeatId(window.leftPane.getCurrentScene() || '1:s1'),
         skip_eval: !autoEval
     };
 
@@ -439,11 +461,6 @@ function handleChatGeneration(userInput) {
     window.socket.emit('user_message', requestData);
 }
 
-function generateNextBeatId() {
-    // Simple beat ID generation - in real system this would be more sophisticated
-    const timestamp = Date.now().toString(36);
-    return '1:b' + timestamp;
-}
 
 // Socket event handlers for streaming
 function handleGenerationStream(data) {
@@ -711,6 +728,13 @@ function setupMessageToggles() {
         evalToggle.addEventListener('click', function() {
             autoEval = !autoEval;
             evalToggle.classList.toggle('off', !autoEval);
+            if (autoEval) {
+                document.querySelectorAll('.message.ai.raw-output').forEach(function(el) {
+                    if (!el.classList.contains('processing') && !el.classList.contains('processed')) {
+                        requestEvaluation(el);
+                    }
+                });
+            }
         });
     }
 }
@@ -732,6 +756,7 @@ window.storyUI = {
     handleImmediateGeneration: handleImmediateGeneration,
     handleChatGeneration: handleChatGeneration,
     generateNextBeatId: generateNextBeatId,
+    generateNextSceneId: generateNextSceneId,
     handleGenerationStream: handleGenerationStream,
     handleGenerationComplete: handleGenerationComplete,
     handleGenerationError: handleGenerationError,
@@ -741,5 +766,14 @@ window.storyUI = {
     setupClickHandlers: setupClickHandlers,
     setupMessageToggles: setupMessageToggles,
     revertToRaw: revertToRaw,
-    toggleAutoEval: function() { autoEval = !autoEval; }
+    toggleAutoEval: function() {
+        autoEval = !autoEval;
+        if (autoEval) {
+            document.querySelectorAll('.message.ai.raw-output').forEach(function(el) {
+                if (!el.classList.contains('processing') && !el.classList.contains('processed')) {
+                    requestEvaluation(el);
+                }
+            });
+        }
+    }
 };
