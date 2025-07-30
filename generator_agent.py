@@ -6,9 +6,9 @@ from base_agent import BaseAgent
 class GeneratorAgent(BaseAgent):
     """Generates story content using context from PrepAgent or direct scene context"""
     
-    def execute(self, story_id: str, scene_id: str, beat_id: str, 
-                user_input: str = "", context_prompt: str = "", 
-                generation_mode: str = "immediate") -> Dict[str, Any]:
+    def execute(self, story_id: str, scene_id: str, beat_id: str,
+                user_input: str = "", context_prompt: str = "",
+                generation_mode: str = "immediate", stream_callback=None) -> Dict[str, Any]:
         """
         Generate story content:
         
@@ -21,11 +21,9 @@ class GeneratorAgent(BaseAgent):
         
         try:
             if generation_mode == "immediate":
-                # Red flash: Quick generation with just scene context
-                result = self._immediate_generation(story_id, scene_id, beat_id, user_input)
+                result = self._immediate_generation(story_id, scene_id, beat_id, user_input, stream_callback)
             elif generation_mode == "simulation":
-                # Yellow flash: Full simulation with PrepAgent context
-                result = self._simulation_generation(story_id, scene_id, beat_id, user_input, context_prompt)
+                result = self._simulation_generation(story_id, scene_id, beat_id, user_input, context_prompt, stream_callback)
             else:
                 raise ValueError(f"Unknown generation mode: {generation_mode}")
             
@@ -52,7 +50,8 @@ class GeneratorAgent(BaseAgent):
             self._finish_execution("", f"Error: {str(e)}")
             return {'success': False, 'error': str(e)}
     
-    def _immediate_generation(self, story_id: str, scene_id: str, beat_id: str, user_input: str) -> Dict[str, Any]:
+    def _immediate_generation(self, story_id: str, scene_id: str, beat_id: str,
+                              user_input: str, stream_callback=None) -> Dict[str, Any]:
         """Quick generation with minimal context (red flash)"""
         print(f"[GeneratorAgent] Starting immediate generation")
         
@@ -69,12 +68,21 @@ class GeneratorAgent(BaseAgent):
             
             messages = [{"role": "user", "content": prompt}]
             
-            generated_text = self.call_llm_with_fallback(
-                messages=messages,
-                fallback_func=fallback_generation,
-                max_tokens=800,
-                temperature=0.7
-            )
+            if stream_callback:
+                generated_text = self.call_llm_stream_with_fallback(
+                    messages=messages,
+                    on_chunk=stream_callback,
+                    fallback_func=fallback_generation,
+                    max_tokens=800,
+                    temperature=0.7
+                )
+            else:
+                generated_text = self.call_llm_with_fallback(
+                    messages=messages,
+                    fallback_func=fallback_generation,
+                    max_tokens=800,
+                    temperature=0.7
+                )
             
             return {
                 'success': True,
@@ -87,8 +95,8 @@ class GeneratorAgent(BaseAgent):
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def _simulation_generation(self, story_id: str, scene_id: str, beat_id: str, 
-                             user_input: str, context_prompt: str) -> Dict[str, Any]:
+    def _simulation_generation(self, story_id: str, scene_id: str, beat_id: str,
+                             user_input: str, context_prompt: str, stream_callback=None) -> Dict[str, Any]:
         """Full generation with PrepAgent context (yellow flash)"""
         print(f"[GeneratorAgent] Starting simulation generation")
         
@@ -106,12 +114,21 @@ class GeneratorAgent(BaseAgent):
             
             messages = [{"role": "user", "content": full_prompt}]
             
-            generated_text = self.call_llm_with_fallback(
-                messages=messages,
-                fallback_func=fallback_generation,
-                max_tokens=1200,
-                temperature=0.6
-            )
+            if stream_callback:
+                generated_text = self.call_llm_stream_with_fallback(
+                    messages=messages,
+                    on_chunk=stream_callback,
+                    fallback_func=fallback_generation,
+                    max_tokens=1200,
+                    temperature=0.6
+                )
+            else:
+                generated_text = self.call_llm_with_fallback(
+                    messages=messages,
+                    fallback_func=fallback_generation,
+                    max_tokens=1200,
+                    temperature=0.6
+                )
             
             return {
                 'success': True,

@@ -297,6 +297,28 @@ function handleImmediateGeneration(userInput) {
     window.socket.emit('generate_immediate', requestData);
 }
 
+function handleChatGeneration(userInput) {
+    console.log('💬 Starting chat generation with input:', userInput);
+
+    document.getElementById('messageInput').disabled = true;
+    document.getElementById('sendButton').disabled = true;
+    document.getElementById('sendButton').textContent = 'Generating...';
+
+    addSystemMessage('💬 Generating response...');
+
+    startStreamingMessage('chat');
+
+    const requestData = {
+        content: userInput,
+        story_id: '1',
+        scene_id: window.leftPane.getCurrentScene() || '1:s1',
+        beat_id: generateNextBeatId()
+    };
+
+    console.log('Sending user_message request:', requestData);
+    window.socket.emit('user_message', requestData);
+}
+
 function generateNextBeatId() {
     // Simple beat ID generation - in real system this would be more sophisticated
     const timestamp = Date.now().toString(36);
@@ -354,13 +376,22 @@ function handleGenerationError(data) {
 
 function handleStoryResponse(data) {
     console.log('Story response received:', data);
+    const wasStreaming = !!currentStreamingMessage;
+    if (wasStreaming) {
+        finishStreamingMessage();
+    }
+
     if (data.success !== false) {
-        // Successful generation - treat like a generated story
-        addGeneratedStory(data.content, data.generation_mode || 'chat');
+        if (!wasStreaming) {
+            addGeneratedStory(data.content, data.generation_mode || 'chat');
+        }
     } else {
-        // Failed generation
         addSystemMessage('❌ Generation failed: ' + (data.error || 'Unknown error'));
     }
+
+    document.getElementById('messageInput').disabled = false;
+    document.getElementById('sendButton').disabled = false;
+    document.getElementById('sendButton').textContent = 'Send';
 }
 
 // Input handling
@@ -380,16 +411,9 @@ function setupInputHandlers() {
             const isImmediate = e && (e.ctrlKey || e.metaKey || window.lastKeyEvent && (window.lastKeyEvent.ctrlKey || window.lastKeyEvent.metaKey));
             
             if (isImmediate) {
-                // Ctrl+Enter: Immediate generation (red flash) with full context
                 handleImmediateGeneration(message);
             } else {
-                // Regular Enter: Simple chat-style generation
-                window.socket.emit('user_message', {
-                    content: message,
-                    story_id: '1',
-                    scene_id: window.leftPane.getCurrentScene() || '1:s1',
-                    beat_id: generateNextBeatId()
-                });
+                handleChatGeneration(message);
             }
             
             input.value = '';
@@ -467,6 +491,7 @@ window.storyUI = {
     processEntityLinks: processEntityLinks,
     generateInitialStory: generateInitialStory,
     handleImmediateGeneration: handleImmediateGeneration,
+    handleChatGeneration: handleChatGeneration,
     generateNextBeatId: generateNextBeatId,
     handleGenerationStream: handleGenerationStream,
     handleGenerationComplete: handleGenerationComplete,

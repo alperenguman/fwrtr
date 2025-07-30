@@ -219,6 +219,52 @@ class BaseAgent:
             result = fallback_func()
             print(f"[{self.agent_type}:{self.agent_task_id}] Fallback completed, returned: {type(result)} with {len(str(result))} chars")
             return result
+
+    def call_llm_stream(self, messages: List[Dict], on_chunk, **kwargs) -> str:
+        """Call LLM with streaming enabled and callback for each chunk"""
+        if not self.llm_client:
+            raise Exception("LLM client not available - check API key and openai installation")
+
+        try:
+            model = os.getenv("OPENAI_MODEL", self.config['model'])
+            call_params = {
+                'model': model,
+                'messages': messages,
+                'max_tokens': kwargs.get('max_tokens', 1000),
+                'temperature': kwargs.get('temperature', 0.3),
+                'stream': True
+            }
+
+            call_params.update({k: v for k, v in kwargs.items() if k not in ['max_tokens', 'temperature']})
+
+            print(f"[{self.agent_type}:{self.agent_task_id}] Starting streaming LLM call...")
+
+            response = self.llm_client.chat.completions.create(**call_params)
+
+            collected = []
+            for chunk in response:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    collected.append(delta)
+                    on_chunk(delta)
+
+            full_text = ''.join(collected)
+            return full_text
+
+        except Exception as e:
+            print(f"[{self.agent_type}:{self.agent_task_id}] Streaming LLM call failed: {str(e)}")
+            raise
+
+    def call_llm_stream_with_fallback(self, messages: List[Dict], on_chunk, fallback_func, **kwargs) -> str:
+        """Call LLM in streaming mode with fallback"""
+        try:
+            return self.call_llm_stream(messages, on_chunk, **kwargs)
+        except Exception:
+            self._current_tokens = 0
+            result = fallback_func()
+            if result:
+                on_chunk(result)
+            return result
     
     def execute(self, **kwargs) -> Dict[str, Any]:
         """Main execution method - override in subclasses"""
