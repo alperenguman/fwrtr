@@ -6,7 +6,14 @@ let currentScene = '1:s1';
 
 function updateSceneInfo(sceneId) {
     const sceneInfo = document.getElementById('sceneInfo');
-    const sceneNumber = sceneId.split(':')[1] || sceneId;
+    let sceneNumber = sceneId;
+
+    if (sceneId && sceneId.includes(':')) {
+        const part = sceneId.split(':')[1];
+        const match = part.match(/\d+/);
+        sceneNumber = match ? match[0] : part;
+    }
+
     sceneInfo.textContent = 'Scene ' + sceneNumber;
 }
 
