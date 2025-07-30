@@ -88,6 +88,19 @@
     border-radius: 8px;
 }
 
+.message.ai.raw-output {
+    background: #1a1a1a;
+}
+
+.message.ai.processed {
+    animation: sparkle 0.6s ease-in-out;
+}
+
+@keyframes sparkle {
+    from { box-shadow: 0 0 6px rgba(255,255,255,0.6); }
+    to { box-shadow: none; }
+}
+
 .message.system {
     background: #0d1b2a;
     padding: 10px 15px;
@@ -249,6 +262,16 @@ body.flash-green {
 
 .beat-boundary:hover {
     background: rgba(255, 255, 255, 0.03);
+}
+
+.undo-btn {
+    font-size: 11px;
+    color: #888;
+    margin-left: 10px;
+    cursor: pointer;
+}
+.undo-btn:hover {
+    color: #fff;
 }
 
 /* Entity Links */

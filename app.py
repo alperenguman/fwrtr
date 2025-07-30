@@ -92,6 +92,17 @@ def handle_user_message(data):
             generation_mode="immediate",
             stream_callback=lambda chunk: socketio.emit('generation_stream', {'chunk': chunk}, to=request.sid)
         )
+
+        # Evaluate with EvalAgent
+        from eval_agent import EvalAgent
+        eval_agent = EvalAgent('EvalAgent', 1, get_db())
+        eval_res = eval_agent.execute(story_id, scene_id, beat_id, result['generated_text'])
+        if eval_res.get('success'):
+            processed_text = eval_res['processed_text']
+            generator.update_story_entry_text(result['story_entry_id'], processed_text)
+            result['generated_text'] = processed_text
+            result['new_scene'] = eval_res.get('new_scene')
+            result['new_beat'] = eval_res.get('new_beat')
         
         print(f"User message generation result: {result}")
         
@@ -101,7 +112,10 @@ def handle_user_message(data):
                 'content': result['generated_text'],
                 'success': True,
                 'generation_mode': 'chat',
-                'story_entry_id': result.get('story_entry_id')
+                'story_entry_id': result.get('story_entry_id'),
+                'new_scene': result.get('new_scene'),
+                'new_beat': result.get('new_beat'),
+                'raw_text': result.get('raw_text')
             })
         else:
             print(f"✗ User message generation failed: {result['error']}")
@@ -150,6 +164,17 @@ def handle_immediate_generation(data):
             generation_mode="immediate",
             stream_callback=lambda chunk: socketio.emit('generation_stream', {'chunk': chunk}, to=request.sid)
         )
+
+        # Evaluate the generated text for beat/scene boundaries
+        from eval_agent import EvalAgent
+        eval_agent = EvalAgent('EvalAgent', 1, get_db())
+        eval_res = eval_agent.execute(story_id, scene_id, beat_id, result['generated_text'])
+        if eval_res.get('success'):
+            processed_text = eval_res['processed_text']
+            generator.update_story_entry_text(result['story_entry_id'], processed_text)
+            result['generated_text'] = processed_text
+            result['new_scene'] = eval_res.get('new_scene')
+            result['new_beat'] = eval_res.get('new_beat')
         
         print(f"Generation result: {result}")
         
@@ -160,7 +185,10 @@ def handle_immediate_generation(data):
                 'generated_text': result['generated_text'],
                 'generation_mode': 'immediate',
                 'story_entry_id': result.get('story_entry_id'),
-                'flash_color': 'red'
+                'flash_color': 'red',
+                'new_scene': result.get('new_scene'),
+                'new_beat': result.get('new_beat'),
+                'raw_text': result.get('raw_text')
             })
         else:
             print(f"✗ Generation failed: {result['error']}")

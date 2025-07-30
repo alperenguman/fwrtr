@@ -105,7 +105,7 @@ function formatTextIntoParagraphs(text) {
 function startStreamingMessage(generationMode, sceneId, beatId) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message ai streaming';
+    messageDiv.className = 'message ai streaming raw-output';
 
     const sceneDiv = document.createElement('div');
     sceneDiv.className = 'scene-boundary';
@@ -128,7 +128,8 @@ function startStreamingMessage(generationMode, sceneId, beatId) {
     currentStreamingMessage = {
         element: messageDiv,
         content: '',
-        contentElement: contentDiv
+        contentElement: contentDiv,
+        rawText: ''
     };
 
     return currentStreamingMessage;
@@ -136,8 +137,9 @@ function startStreamingMessage(generationMode, sceneId, beatId) {
 
 function appendToStreamingMessage(text) {
     if (!currentStreamingMessage) return;
-    
+
     currentStreamingMessage.content += text;
+    currentStreamingMessage.rawText += text;
     
     // Update the display with formatted paragraphs
     const formattedContent = formatTextIntoParagraphs(currentStreamingMessage.content);
@@ -154,11 +156,26 @@ function finishStreamingMessage() {
     // Remove streaming class and cursor
     currentStreamingMessage.element.classList.remove('streaming');
 
+    // Store raw text for undo
+    currentStreamingMessage.element.dataset.rawText = currentStreamingMessage.rawText;
+
     // Final format of the content
     const formattedContent = formatTextIntoParagraphs(currentStreamingMessage.content);
     currentStreamingMessage.contentElement.innerHTML = formattedContent;
     currentStreamingMessage.contentElement.classList.remove('streaming-content');
-    
+
+    const targetElement = currentStreamingMessage.element;
+
+    // Add undo button
+    const undoBtn = document.createElement('span');
+    undoBtn.className = 'undo-btn';
+    undoBtn.textContent = 'Undo';
+    undoBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        revertToRaw(targetElement);
+    });
+    targetElement.appendChild(undoBtn);
+
     currentStreamingMessage = null;
     
     setTimeout(function() {
@@ -166,7 +183,7 @@ function finishStreamingMessage() {
     }, 100);
 }
 
-function addGeneratedStory(content, generationMode, sceneId, beatId) {
+function addGeneratedStory(content, generationMode, sceneId, beatId, rawText, storyEntryId) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message ai';
@@ -190,6 +207,20 @@ function addGeneratedStory(content, generationMode, sceneId, beatId) {
     beatDiv.appendChild(contentDiv);
     sceneDiv.appendChild(beatDiv);
     messageDiv.appendChild(sceneDiv);
+    if (storyEntryId) {
+        messageDiv.dataset.storyEntryId = storyEntryId;
+    }
+    if (rawText) {
+        messageDiv.dataset.rawText = rawText;
+        const undoBtn = document.createElement('span');
+        undoBtn.className = 'undo-btn';
+        undoBtn.textContent = 'Undo';
+        undoBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            revertToRaw(messageDiv);
+        });
+        messageDiv.appendChild(undoBtn);
+    }
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
@@ -208,6 +239,16 @@ function flashBackground(color) {
     setTimeout(function() {
         body.classList.remove('flash-' + color);
     }, 1000);
+}
+
+function revertToRaw(messageEl) {
+    if (!messageEl || !messageEl.dataset.rawText) return;
+    const raw = messageEl.dataset.rawText;
+    const contentDiv = messageEl.querySelector('.generation-content');
+    if (contentDiv) {
+        contentDiv.innerHTML = formatTextIntoParagraphs(raw);
+    }
+    messageEl.classList.remove('processed');
 }
 
 function addAIMessage(content) {
@@ -360,9 +401,26 @@ function handleGenerationComplete(data) {
     // Finish streaming if in progress
     if (currentStreamingMessage) {
         finishStreamingMessage();
+        // Replace raw text with processed text
+        if (data.generated_text) {
+            const formatted = formatTextIntoParagraphs(data.generated_text);
+            currentStreamingMessage.contentElement.innerHTML = formatted;
+            currentStreamingMessage.element.classList.add('processed');
+            currentStreamingMessage.element.dataset.storyEntryId = data.story_entry_id || '';
+            if (data.raw_text) {
+                currentStreamingMessage.element.dataset.rawText = data.raw_text;
+            }
+        }
     } else {
         // Fallback for non-streaming response
-        addGeneratedStory(data.generated_text || data.content, data.generation_mode || 'immediate');
+        addGeneratedStory(
+            data.generated_text || data.content,
+            data.generation_mode || 'immediate',
+            null,
+            null,
+            data.raw_text || data.content,
+            data.story_entry_id || ''
+        );
     }
     
     // Flash the background
@@ -406,16 +464,33 @@ function handleStoryResponse(data) {
         currentGenSystemMessage = null;
     }
     const wasStreaming = !!currentStreamingMessage;
-    if (wasStreaming) {
-        finishStreamingMessage();
-    }
 
     if (data.success !== false) {
         if (!wasStreaming) {
-            addGeneratedStory(data.content, data.generation_mode || 'chat');
+            addGeneratedStory(
+                data.content,
+                data.generation_mode || 'chat',
+                null,
+                null,
+                data.raw_text || data.content
+            );
+        } else {
+            // Replace streamed content with processed text
+            if (currentStreamingMessage && data.content) {
+                const formatted = formatTextIntoParagraphs(data.content);
+                currentStreamingMessage.contentElement.innerHTML = formatted;
+                currentStreamingMessage.element.classList.add('processed');
+                if (data.raw_text) {
+                    currentStreamingMessage.element.dataset.rawText = data.raw_text;
+                }
+            }
         }
     } else {
         addSystemMessage('❌ Generation failed: ' + (data.error || 'Unknown error'));
+    }
+
+    if (wasStreaming) {
+        finishStreamingMessage();
     }
 
     document.getElementById('messageInput').disabled = false;
@@ -565,5 +640,6 @@ window.storyUI = {
     handleStoryResponse: handleStoryResponse,
     setupInputHandlers: setupInputHandlers,
     setupClickHandlers: setupClickHandlers,
-    setupMessageToggles: setupMessageToggles
+    setupMessageToggles: setupMessageToggles,
+    revertToRaw: revertToRaw
 };
