@@ -1,8 +1,9 @@
 // Story UI Management
-// Handles chat messages, story display, scene/beat observers, and generation
+// Handles chat messages, story display, scene/beat observers, and generation with streaming
 
 // Scroll observer for scene tracking
 let sceneObserver;
+let currentStreamingMessage = null;
 
 function initializeSceneObserver() {
     if ('IntersectionObserver' in window) {
@@ -42,22 +43,142 @@ function addSystemMessage(text) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function addGeneratedStory(content, generationMode) {
+function formatTextIntoParagraphs(text) {
+    // Split text into paragraphs based on double line breaks, single line breaks, or sentence patterns
+    let paragraphs = text
+        // First split on double line breaks
+        .split(/\n\s*\n/)
+        // Then split on single line breaks if paragraphs are too long
+        .flatMap(para => {
+            if (para.length > 300) {
+                // Split long paragraphs on sentence boundaries
+                return para.split(/(?<=[.!?])\s+(?=[A-Z])/).reduce((acc, sentence) => {
+                    if (acc.length === 0) {
+                        acc.push(sentence);
+                    } else {
+                        const lastPara = acc[acc.length - 1];
+                        if (lastPara.length + sentence.length < 300) {
+                            acc[acc.length - 1] = lastPara + ' ' + sentence;
+                        } else {
+                            acc.push(sentence);
+                        }
+                    }
+                    return acc;
+                }, []);
+            }
+            return [para];
+        })
+        // Clean up and filter empty paragraphs
+        .map(para => para.trim())
+        .filter(para => para.length > 0);
+
+    // If no natural breaks found, create artificial breaks every ~200 characters at sentence boundaries
+    if (paragraphs.length === 1 && paragraphs[0].length > 200) {
+        const sentences = paragraphs[0].split(/(?<=[.!?])\s+/);
+        paragraphs = [];
+        let currentPara = '';
+        
+        for (const sentence of sentences) {
+            if (currentPara.length + sentence.length > 200 && currentPara.length > 0) {
+                paragraphs.push(currentPara.trim());
+                currentPara = sentence;
+            } else {
+                currentPara += (currentPara ? ' ' : '') + sentence;
+            }
+        }
+        
+        if (currentPara) {
+            paragraphs.push(currentPara.trim());
+        }
+    }
+
+    return paragraphs.map(para => '<p>' + processEntityLinks(para) + '</p>').join('');
+}
+
+function startStreamingMessage(generationMode) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message generated ${generationMode}`;
+    messageDiv.className = 'message generated ' + generationMode + ' streaming';
     
     // Add generation mode indicator
     const modeIndicator = generationMode === 'immediate' ? '⚡ Immediate' : '🔄 Simulation';
     const timestamp = new Date().toLocaleTimeString();
     
-    messageDiv.innerHTML = `
-        <div class="generation-header">
-            <span class="generation-mode">${modeIndicator}</span>
-            <span class="generation-time">${timestamp}</span>
-        </div>
-        <div class="generation-content">${processEntityLinks(content)}</div>
-    `;
+    messageDiv.innerHTML = 
+        '<div class="generation-header">' +
+            '<span class="generation-mode">' + modeIndicator + '</span>' +
+            '<span class="generation-time">' + timestamp + '</span>' +
+            '<span class="streaming-indicator">●</span>' +
+        '</div>' +
+        '<div class="generation-content streaming-content">' +
+            '<div class="streaming-cursor">▊</div>' +
+        '</div>';
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    currentStreamingMessage = {
+        element: messageDiv,
+        content: '',
+        contentElement: messageDiv.querySelector('.streaming-content')
+    };
+    
+    return currentStreamingMessage;
+}
+
+function appendToStreamingMessage(text) {
+    if (!currentStreamingMessage) return;
+    
+    currentStreamingMessage.content += text;
+    
+    // Update the display with formatted paragraphs
+    const formattedContent = formatTextIntoParagraphs(currentStreamingMessage.content);
+    currentStreamingMessage.contentElement.innerHTML = formattedContent + '<div class="streaming-cursor">▊</div>';
+    
+    // Auto-scroll to keep up with streaming
+    const chatMessages = document.getElementById('chatMessages');
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function finishStreamingMessage() {
+    if (!currentStreamingMessage) return;
+    
+    // Remove streaming classes and cursor
+    currentStreamingMessage.element.classList.remove('streaming');
+    const streamingIndicator = currentStreamingMessage.element.querySelector('.streaming-indicator');
+    if (streamingIndicator) {
+        streamingIndicator.remove();
+    }
+    
+    // Final format of the content
+    const formattedContent = formatTextIntoParagraphs(currentStreamingMessage.content);
+    currentStreamingMessage.contentElement.innerHTML = formattedContent;
+    currentStreamingMessage.contentElement.classList.remove('streaming-content');
+    
+    currentStreamingMessage = null;
+    
+    setTimeout(function() {
+        observeSceneBoundaries();
+    }, 100);
+}
+
+function addGeneratedStory(content, generationMode) {
+    const chatMessages = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message generated ' + generationMode;
+    
+    // Add generation mode indicator
+    const modeIndicator = generationMode === 'immediate' ? '⚡ Immediate' : '🔄 Simulation';
+    const timestamp = new Date().toLocaleTimeString();
+    
+    const formattedContent = formatTextIntoParagraphs(content);
+    
+    messageDiv.innerHTML = 
+        '<div class="generation-header">' +
+            '<span class="generation-mode">' + modeIndicator + '</span>' +
+            '<span class="generation-time">' + timestamp + '</span>' +
+        '</div>' +
+        '<div class="generation-content">' + formattedContent + '</div>';
     
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -69,14 +190,13 @@ function addGeneratedStory(content, generationMode) {
 
 function flashBackground(color) {
     const body = document.body;
-    const originalClass = body.className;
     
     // Add flash class
-    body.classList.add(`flash-${color}`);
+    body.classList.add('flash-' + color);
     
     // Remove after animation
-    setTimeout(() => {
-        body.classList.remove(`flash-${color}`);
+    setTimeout(function() {
+        body.classList.remove('flash-' + color);
     }, 1000);
 }
 
@@ -84,7 +204,10 @@ function addAIMessage(content) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message ai';
-    messageDiv.innerHTML = processEntityLinks(content);
+    
+    const formattedContent = formatTextIntoParagraphs(content);
+    messageDiv.innerHTML = formattedContent;
+    
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
@@ -114,7 +237,7 @@ function generateInitialStory() {
     
     let content = '<div class="scene-boundary" data-scene-id="1:s1">';
     content += '<div class="beat-boundary" data-beat-id="1:b1">';
-    content += '<p><strong>Welcome to your story!</strong> The scene is set with:</p><br>';
+    content += '<p><strong>Welcome to your story!</strong> The scene is set with:</p>';
     
     const sarah = entities.find(function(e) { return e.base_type === 'actor' && e.name.includes('Sarah'); });
     const rod = entities.find(function(e) { return e.base_type === 'object' && e.name.includes('Rod'); });
@@ -136,7 +259,7 @@ function generateInitialStory() {
         content += '<p>Loading story entities...</p>';
     }
     
-    content += '</div></div><br>';
+    content += '</div></div>';
     content += '<p><em>Type story directions and press <strong>Ctrl+Enter</strong> for immediate generation (red flash), or <strong>Enter</strong> for chat!</em></p>';
     
     document.getElementById('chatMessages').innerHTML = '<div class="message ai">' + content + '</div>';
@@ -158,6 +281,9 @@ function handleImmediateGeneration(userInput) {
     // Add generation indicator
     addSystemMessage('🔥 Starting immediate generation...');
     
+    // Start streaming message
+    startStreamingMessage('immediate');
+    
     const requestData = {
         content: userInput,
         story_id: '1',
@@ -174,18 +300,31 @@ function handleImmediateGeneration(userInput) {
 function generateNextBeatId() {
     // Simple beat ID generation - in real system this would be more sophisticated
     const timestamp = Date.now().toString(36);
-    return `1:b${timestamp}`;
+    return '1:b' + timestamp;
 }
 
-// Socket event handlers
+// Socket event handlers for streaming
+function handleGenerationStream(data) {
+    console.log('📡 Streaming chunk received:', data.chunk);
+    
+    if (data.chunk) {
+        appendToStreamingMessage(data.chunk);
+    }
+}
+
 function handleGenerationComplete(data) {
     console.log('✓ Generation complete:', data);
     
+    // Finish streaming if in progress
+    if (currentStreamingMessage) {
+        finishStreamingMessage();
+    } else {
+        // Fallback for non-streaming response
+        addGeneratedStory(data.generated_text || data.content, data.generation_mode || 'immediate');
+    }
+    
     // Flash the background
     flashBackground(data.flash_color || 'red');
-    
-    // Add the generated story to chat
-    addGeneratedStory(data.generated_text, data.generation_mode);
     
     // Re-enable input
     document.getElementById('messageInput').disabled = false;
@@ -195,6 +334,11 @@ function handleGenerationComplete(data) {
 
 function handleGenerationError(data) {
     console.error('✗ Generation error:', data);
+    
+    // Finish streaming if in progress
+    if (currentStreamingMessage) {
+        finishStreamingMessage();
+    }
     
     // Flash red for error
     flashBackground('red');
@@ -310,19 +454,24 @@ function setupClickHandlers() {
 
 // Export functions to global scope
 window.storyUI = {
-    initializeSceneObserver,
-    observeSceneBoundaries,
-    addSystemMessage,
-    addGeneratedStory,
-    flashBackground,
-    addAIMessage,
-    processEntityLinks,
-    generateInitialStory,
-    handleImmediateGeneration,
-    generateNextBeatId,
-    handleGenerationComplete,
-    handleGenerationError,
-    handleStoryResponse,
-    setupInputHandlers,
-    setupClickHandlers
+    initializeSceneObserver: initializeSceneObserver,
+    observeSceneBoundaries: observeSceneBoundaries,
+    addSystemMessage: addSystemMessage,
+    formatTextIntoParagraphs: formatTextIntoParagraphs,
+    startStreamingMessage: startStreamingMessage,
+    appendToStreamingMessage: appendToStreamingMessage,
+    finishStreamingMessage: finishStreamingMessage,
+    addGeneratedStory: addGeneratedStory,
+    flashBackground: flashBackground,
+    addAIMessage: addAIMessage,
+    processEntityLinks: processEntityLinks,
+    generateInitialStory: generateInitialStory,
+    handleImmediateGeneration: handleImmediateGeneration,
+    generateNextBeatId: generateNextBeatId,
+    handleGenerationStream: handleGenerationStream,
+    handleGenerationComplete: handleGenerationComplete,
+    handleGenerationError: handleGenerationError,
+    handleStoryResponse: handleStoryResponse,
+    setupInputHandlers: setupInputHandlers,
+    setupClickHandlers: setupClickHandlers
 };

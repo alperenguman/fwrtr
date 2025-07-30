@@ -50,6 +50,10 @@ if (typeof window.storywriterApp === 'undefined') {
     });
 
     // Generation events
+    socket.on('generation_stream', function(data) {
+        window.storyUI.handleGenerationStream(data);
+    });
+
     socket.on('generation_complete', function(data) {
         window.storyUI.handleGenerationComplete(data);
     });

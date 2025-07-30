@@ -23,3 +23,9 @@ States' interpretations of states. Perspectives.
 
 ## Awareness
 Weights system to determine what makes it into the finite input context space. Attention decay to clear the palate for new creation.
+
+## Representations
+Audio/Visual representations of entities, states, relationships.
+
+## Inspirations
+Real world to story entity imports.
