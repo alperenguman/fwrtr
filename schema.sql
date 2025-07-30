@@ -463,8 +463,8 @@ VALUES (
     'EvalAgent',
     1,
     'Beat/Scene Evaluator',
-    'Determines if new text starts a new beat or scene and returns processed text.',
-    'Given raw story text, decide if it begins a new scene or beat. Respond with JSON: {"processed_text": "text", "new_scene": false, "new_beat": true}. You may adjust punctuation or formatting in processed_text but keep the story the same.',
+    'Determines if new text starts a new beat or scene and returns processed text broken into segments.',
+    'Given raw story text, break it into logical segments representing beats. Indicate if any segment starts a new scene. Respond with JSON: {"processed_text":"text","segments":[{"text":"segment","new_scene":false}]}.',
     '{}',
     'gpt-3.5-turbo',
     1

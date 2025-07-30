@@ -66,6 +66,10 @@ if (typeof window.storywriterApp === 'undefined') {
         window.storyUI.handleStoryResponse(data);
     });
 
+    socket.on('evaluation_result', function(data) {
+        window.storyUI.handleEvaluationResult(data);
+    });
+
     socket.on('error', function(error) {
         console.error('Socket error:', error);
         window.storyUI.addSystemMessage('Error: ' + error.message);
