@@ -54,12 +54,20 @@ if (typeof window.storywriterApp === 'undefined') {
         window.storyUI.handleGenerationComplete(data);
     });
 
+    socket.on('generation_stream', function(data) {
+        window.storyUI.appendStreamingContent(data.content);
+    });
+
     socket.on('generation_error', function(data) {
         window.storyUI.handleGenerationError(data);
     });
 
     socket.on('story_response', function(data) {
         window.storyUI.handleStoryResponse(data);
+    });
+
+    socket.on('story_stream', function(data) {
+        window.storyUI.appendStreamingContent(data.content);
     });
 
     socket.on('error', function(error) {

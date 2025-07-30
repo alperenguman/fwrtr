@@ -84,12 +84,16 @@ def handle_user_message(data):
         
         # Generate story content using immediate mode
         print("Calling generator.execute for user message...")
+        def stream_cb(chunk):
+            emit('story_stream', {'content': chunk}, room=request.sid)
+
         result = generator.execute(
             story_id=story_id,
-            scene_id=scene_id, 
+            scene_id=scene_id,
             beat_id=beat_id,
             user_input=content,
-            generation_mode="immediate"
+            generation_mode="immediate",
+            stream_callback=stream_cb
         )
         
         print(f"User message generation result: {result}")
@@ -141,12 +145,17 @@ def handle_immediate_generation(data):
         
         # Generate story content
         print("Calling generator.execute...")
+
+        def stream_cb(chunk):
+            emit('generation_stream', {'content': chunk}, room=request.sid)
+
         result = generator.execute(
             story_id=story_id,
-            scene_id=scene_id, 
+            scene_id=scene_id,
             beat_id=beat_id,
             user_input=user_input,
-            generation_mode="immediate"
+            generation_mode="immediate",
+            stream_callback=stream_cb
         )
         
         print(f"Generation result: {result}")

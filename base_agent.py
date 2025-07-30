@@ -219,6 +219,45 @@ class BaseAgent:
             result = fallback_func()
             print(f"[{self.agent_type}:{self.agent_task_id}] Fallback completed, returned: {type(result)} with {len(str(result))} chars")
             return result
+
+    def call_llm_stream(self, messages: List[Dict], stream_callback, fallback_func, **kwargs) -> str:
+        """Stream LLM response token by token and invoke callback for each chunk"""
+        if not self.llm_client:
+            # If client unavailable use fallback at once
+            result = fallback_func()
+            stream_callback(result)
+            return result
+
+        # Build call parameters
+        model = os.getenv("OPENAI_MODEL", self.config['model'])
+        call_params = {
+            'model': model,
+            'messages': messages,
+            'max_tokens': kwargs.get('max_tokens', 1000),
+            'temperature': kwargs.get('temperature', 0.3),
+            'stream': True
+        }
+        call_params.update({k: v for k, v in kwargs.items() if k not in ['max_tokens', 'temperature']})
+
+        try:
+            response = self.llm_client.chat.completions.create(**call_params)
+            full_text = ""
+            for chunk in response:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    stream_callback(delta)
+                    full_text += delta
+
+            # token usage may be available in last chunk
+            tokens_used = getattr(getattr(response, 'usage', None), 'total_tokens', 0)
+            self._current_tokens = tokens_used
+            return full_text
+        except Exception:
+            # Streaming failed - fall back
+            self._current_tokens = 0
+            result = fallback_func()
+            stream_callback(result)
+            return result
     
     def execute(self, **kwargs) -> Dict[str, Any]:
         """Main execution method - override in subclasses"""

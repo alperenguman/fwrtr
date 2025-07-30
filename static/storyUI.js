@@ -3,6 +3,7 @@
 
 // Scroll observer for scene tracking
 let sceneObserver;
+let streamTarget = null;
 
 function initializeSceneObserver() {
     if ('IntersectionObserver' in window) {
@@ -93,6 +94,40 @@ function addAIMessage(content) {
     }, 100);
 }
 
+function startStreamingMessage(mode) {
+    const chatMessages = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message generated ${mode}`;
+
+    const modeIndicator = mode === 'immediate' ? '⚡ Immediate' : (mode === 'simulation' ? '🔄 Simulation' : '💬 Chat');
+    const timestamp = new Date().toLocaleTimeString();
+
+    messageDiv.innerHTML = `
+        <div class="generation-header">
+            <span class="generation-mode">${modeIndicator}</span>
+            <span class="generation-time">${timestamp}</span>
+        </div>
+        <div class="generation-content"></div>
+    `;
+
+    chatMessages.appendChild(messageDiv);
+    streamTarget = messageDiv.querySelector('.generation-content');
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function appendStreamingContent(text) {
+    if (streamTarget) {
+        streamTarget.innerHTML += processEntityLinks(text);
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+}
+
+function finishStreaming() {
+    streamTarget = null;
+    observeSceneBoundaries();
+}
+
 function processEntityLinks(text) {
     const entityData = window.leftPane.getEntityData();
     for (const entityId in entityData) {
@@ -166,7 +201,9 @@ function handleImmediateGeneration(userInput) {
     };
     
     console.log('Sending generate_immediate request:', requestData);
-    
+
+    startStreamingMessage('immediate');
+
     // Send generation request
     window.socket.emit('generate_immediate', requestData);
 }
@@ -180,12 +217,16 @@ function generateNextBeatId() {
 // Socket event handlers
 function handleGenerationComplete(data) {
     console.log('✓ Generation complete:', data);
-    
+
     // Flash the background
     flashBackground(data.flash_color || 'red');
-    
-    // Add the generated story to chat
-    addGeneratedStory(data.generated_text, data.generation_mode);
+
+    if (streamTarget) {
+        finishStreaming();
+    } else {
+        // Add the generated story to chat if not streamed
+        addGeneratedStory(data.generated_text, data.generation_mode);
+    }
     
     // Re-enable input
     document.getElementById('messageInput').disabled = false;
@@ -199,6 +240,9 @@ function handleGenerationError(data) {
     // Flash red for error
     flashBackground('red');
     
+    if (streamTarget) {
+        finishStreaming();
+    }
     // Show error message
     addSystemMessage('❌ Generation failed: ' + data.error);
     
@@ -211,10 +255,17 @@ function handleGenerationError(data) {
 function handleStoryResponse(data) {
     console.log('Story response received:', data);
     if (data.success !== false) {
-        // Successful generation - treat like a generated story
-        addGeneratedStory(data.content, data.generation_mode || 'chat');
+        if (streamTarget) {
+            finishStreaming();
+        } else {
+            // Successful generation - treat like a generated story
+            addGeneratedStory(data.content, data.generation_mode || 'chat');
+        }
     } else {
         // Failed generation
+        if (streamTarget) {
+            finishStreaming();
+        }
         addSystemMessage('❌ Generation failed: ' + (data.error || 'Unknown error'));
     }
 }
@@ -240,6 +291,7 @@ function setupInputHandlers() {
                 handleImmediateGeneration(message);
             } else {
                 // Regular Enter: Simple chat-style generation
+                startStreamingMessage('chat');
                 window.socket.emit('user_message', {
                     content: message,
                     story_id: '1',
@@ -324,5 +376,8 @@ window.storyUI = {
     handleGenerationError,
     handleStoryResponse,
     setupInputHandlers,
-    setupClickHandlers
+    setupClickHandlers,
+    startStreamingMessage,
+    appendStreamingContent,
+    finishStreaming
 };
