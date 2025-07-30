@@ -1,5 +1,6 @@
 import json
 from typing import Dict, List, Any, Optional
+from datetime import datetime
 from base_agent import BaseAgent
 
 
@@ -28,10 +29,12 @@ class GeneratorAgent(BaseAgent):
                 raise ValueError(f"Unknown generation mode: {generation_mode}")
             
             if result['success']:
-                # Store the generated story
+                raw_text = result.get('raw_text', result['generated_text'])
+                # Store the generated story (processed text may be updated later)
                 story_entry_id = self._store_story_entry(
-                    story_id, scene_id, beat_id, 
-                    result['generated_text'], 
+                    story_id, scene_id, beat_id,
+                    raw_text,
+                    raw_text,
                     generation_mode
                 )
                 result['story_entry_id'] = story_entry_id
@@ -87,6 +90,7 @@ class GeneratorAgent(BaseAgent):
             return {
                 'success': True,
                 'generated_text': generated_text,
+                'raw_text': generated_text,
                 'generation_mode': 'immediate',
                 'context_size': len(prompt),
                 'tokens': getattr(self, '_current_tokens', 0)
@@ -133,6 +137,7 @@ class GeneratorAgent(BaseAgent):
             return {
                 'success': True,
                 'generated_text': generated_text,
+                'raw_text': generated_text,
                 'generation_mode': 'simulation',
                 'context_size': len(full_prompt),
                 'tokens': getattr(self, '_current_tokens', 0)
@@ -236,21 +241,33 @@ class GeneratorAgent(BaseAgent):
         else:
             return "The story progresses naturally, building on the established context and character relationships."
     
-    def _store_story_entry(self, story_id: str, scene_id: str, beat_id: str, 
-                          text_content: str, generation_mode: str) -> int:
-        """Store generated story in database"""
+    def _store_story_entry(self, story_id: str, scene_id: str, beat_id: str,
+                          raw_text: str, processed_text: str,
+                          generation_mode: str) -> int:
+        """Store generated story in database with raw and processed text"""
         
         # Determine variant based on generation mode
         variant = 'immediate' if generation_mode == 'immediate' else 'simulation'
         
         # Insert story entry
         cursor = self.db.execute("""
-            INSERT INTO stories 
-            (story_id, timeline_id, scene_id, beat_id, text_content, variant, revision, character_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (story_id, '1:tl1', scene_id, beat_id, text_content, variant, 'rev1', len(text_content)))
+            INSERT INTO stories
+            (story_id, timeline_id, scene_id, beat_id, raw_text, text_content, variant, revision, character_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            story_id, '1:tl1', scene_id, beat_id,
+            raw_text, processed_text, variant, 'rev1', len(processed_text)
+        ))
         
         story_entry_id = cursor.lastrowid
         self.db.commit()
-        
+
         return story_entry_id
+
+    def update_story_entry_text(self, story_entry_id: int, processed_text: str):
+        """Update processed text for an existing story entry"""
+        self.db.execute(
+            'UPDATE stories SET text_content = ?, character_count = ?, updated_at = ? WHERE story_entry_id = ?',
+            (processed_text, len(processed_text), datetime.now().isoformat(), story_entry_id)
+        )
+        self.db.commit()

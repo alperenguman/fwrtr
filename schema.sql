@@ -250,7 +250,8 @@ CREATE TABLE stories (
     beat_id TEXT NOT NULL,
     
     -- Story content and metadata
-    text_content TEXT NOT NULL, -- The actual generated story text
+    raw_text TEXT NOT NULL, -- Raw generated text before any processing
+    text_content TEXT NOT NULL, -- The final processed story text
     variant TEXT NOT NULL, -- 'roll1', 'roll2', 'roll3', 'user_input', 'final', etc.
     revision TEXT NOT NULL, -- 'rev1', 'rev2', 'rev3', etc.
     
@@ -456,3 +457,16 @@ BEGIN
         updated_at = CURRENT_TIMESTAMP
     WHERE awareness_id = NEW.awareness_id;
 END;
+-- Default agent instructions
+INSERT INTO agents (agent_type, agent_task_id, agent_name, agent_description, agent_instructions, agent_function_calls, model, is_active)
+VALUES (
+    'EvalAgent',
+    1,
+    'Beat/Scene Evaluator',
+    'Determines if new text starts a new beat or scene and returns processed text broken into segments.',
+    'Given raw story text, break it into logical segments representing beats. Indicate if any segment starts a new scene. Respond with JSON: {"processed_text":"text","segments":[{"text":"segment","new_scene":false}]}.',
+    '{}',
+    'gpt-3.5-turbo',
+    1
+);
+

@@ -62,6 +62,35 @@ def handle_load_entities():
     except Exception as e:
         emit('error', {'message': str(e)})
 
+@socketio.on('evaluate_entry')
+def handle_evaluate_entry(data):
+    """Manually evaluate a story entry using EvalAgent"""
+    story_entry_id = data.get('story_entry_id')
+    if not story_entry_id:
+        emit('evaluation_result', {'success': False, 'error': 'No story_entry_id provided'})
+        return
+
+    conn = get_db()
+    entry = conn.execute('SELECT story_id, scene_id, beat_id, raw_text FROM stories WHERE story_entry_id = ?', (story_entry_id,)).fetchone()
+    if not entry:
+        emit('evaluation_result', {'success': False, 'error': 'Entry not found'})
+        return
+
+    from eval_agent import EvalAgent
+    eval_agent = EvalAgent('EvalAgent', 1, conn)
+    res = eval_agent.execute(entry['story_id'], entry['scene_id'], entry['beat_id'], entry['raw_text'])
+
+    if res.get('success'):
+        conn.execute(
+            'UPDATE stories SET text_content = ?, updated_at = ? WHERE story_entry_id = ?',
+            (res['processed_text'], datetime.now().isoformat(), story_entry_id)
+        )
+        conn.commit()
+
+    res['story_entry_id'] = story_entry_id
+    res['raw_text'] = entry['raw_text']
+    emit('evaluation_result', res)
+
 @socketio.on('user_message')
 def handle_user_message(data):
     """Process user message and respond with immediate generation"""
@@ -69,6 +98,8 @@ def handle_user_message(data):
     story_id = data.get('story_id', '1')
     scene_id = data.get('scene_id', '1:s1')
     beat_id = data.get('beat_id', '1:b3')
+    skip_eval = data.get('skip_eval', False)
+    skip_eval = data.get('skip_eval', False)
     
     print(f"=== USER MESSAGE REQUEST ===")
     print(f"User input: {content}")
@@ -92,6 +123,19 @@ def handle_user_message(data):
             generation_mode="immediate",
             stream_callback=lambda chunk: socketio.emit('generation_stream', {'chunk': chunk}, to=request.sid)
         )
+
+        if not skip_eval:
+            # Evaluate with EvalAgent
+            from eval_agent import EvalAgent
+            eval_agent = EvalAgent('EvalAgent', 1, get_db())
+            eval_res = eval_agent.execute(story_id, scene_id, beat_id, result['generated_text'])
+            if eval_res.get('success'):
+                processed_text = eval_res['processed_text']
+                generator.update_story_entry_text(result['story_entry_id'], processed_text)
+                result['generated_text'] = processed_text
+                result['segments'] = eval_res.get('segments')
+                result['new_scene'] = eval_res.get('new_scene')
+                result['new_beat'] = eval_res.get('new_beat')
         
         print(f"User message generation result: {result}")
         
@@ -101,7 +145,11 @@ def handle_user_message(data):
                 'content': result['generated_text'],
                 'success': True,
                 'generation_mode': 'chat',
-                'story_entry_id': result.get('story_entry_id')
+                'story_entry_id': result.get('story_entry_id'),
+                'new_scene': result.get('new_scene'),
+                'new_beat': result.get('new_beat'),
+                'raw_text': result.get('raw_text'),
+                'segments': result.get('segments')
             })
         else:
             print(f"✗ User message generation failed: {result['error']}")
@@ -126,6 +174,7 @@ def handle_immediate_generation(data):
     story_id = data.get('story_id', '1')
     scene_id = data.get('scene_id', '1:s1')
     beat_id = data.get('beat_id', '1:b3')
+    skip_eval = data.get('skip_eval', False)
     
     print(f"=== IMMEDIATE GENERATION REQUEST ===")
     print(f"User input: {user_input}")
@@ -150,6 +199,19 @@ def handle_immediate_generation(data):
             generation_mode="immediate",
             stream_callback=lambda chunk: socketio.emit('generation_stream', {'chunk': chunk}, to=request.sid)
         )
+
+        if not skip_eval:
+            # Evaluate the generated text for beat/scene boundaries
+            from eval_agent import EvalAgent
+            eval_agent = EvalAgent('EvalAgent', 1, get_db())
+            eval_res = eval_agent.execute(story_id, scene_id, beat_id, result['generated_text'])
+            if eval_res.get('success'):
+                processed_text = eval_res['processed_text']
+                generator.update_story_entry_text(result['story_entry_id'], processed_text)
+                result['generated_text'] = processed_text
+                result['segments'] = eval_res.get('segments')
+                result['new_scene'] = eval_res.get('new_scene')
+                result['new_beat'] = eval_res.get('new_beat')
         
         print(f"Generation result: {result}")
         
@@ -160,7 +222,11 @@ def handle_immediate_generation(data):
                 'generated_text': result['generated_text'],
                 'generation_mode': 'immediate',
                 'story_entry_id': result.get('story_entry_id'),
-                'flash_color': 'red'
+                'flash_color': 'red',
+                'new_scene': result.get('new_scene'),
+                'new_beat': result.get('new_beat'),
+                'raw_text': result.get('raw_text'),
+                'segments': result.get('segments')
             })
         else:
             print(f"✗ Generation failed: {result['error']}")

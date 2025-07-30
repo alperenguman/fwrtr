@@ -7,6 +7,24 @@ let currentStreamingMessage = null;
 let currentGenSystemMessage = null;
 let showSystemMessages = true;
 let showUserMessages = true;
+let autoEval = true;
+let sceneCounter = 1;
+const beatCounters = { '1:s1': 1 };
+
+function generateNextSceneId() {
+    sceneCounter += 1;
+    const id = '1:s' + sceneCounter;
+    beatCounters[id] = 0;
+    return id;
+}
+
+function generateNextBeatId(sceneId = window.leftPane.getCurrentScene() || '1:s1') {
+    if (!beatCounters[sceneId]) {
+        beatCounters[sceneId] = 0;
+    }
+    beatCounters[sceneId] += 1;
+    return '1:b' + beatCounters[sceneId];
+}
 
 function initializeSceneObserver() {
     if ('IntersectionObserver' in window) {
@@ -105,7 +123,7 @@ function formatTextIntoParagraphs(text) {
 function startStreamingMessage(generationMode, sceneId, beatId) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message ai streaming';
+    messageDiv.className = 'message ai streaming raw-output';
 
     const sceneDiv = document.createElement('div');
     sceneDiv.className = 'scene-boundary';
@@ -128,7 +146,8 @@ function startStreamingMessage(generationMode, sceneId, beatId) {
     currentStreamingMessage = {
         element: messageDiv,
         content: '',
-        contentElement: contentDiv
+        contentElement: contentDiv,
+        rawText: ''
     };
 
     return currentStreamingMessage;
@@ -136,8 +155,9 @@ function startStreamingMessage(generationMode, sceneId, beatId) {
 
 function appendToStreamingMessage(text) {
     if (!currentStreamingMessage) return;
-    
+
     currentStreamingMessage.content += text;
+    currentStreamingMessage.rawText += text;
     
     // Update the display with formatted paragraphs
     const formattedContent = formatTextIntoParagraphs(currentStreamingMessage.content);
@@ -154,11 +174,37 @@ function finishStreamingMessage() {
     // Remove streaming class and cursor
     currentStreamingMessage.element.classList.remove('streaming');
 
+    // Store raw text for undo
+    currentStreamingMessage.element.dataset.rawText = currentStreamingMessage.rawText;
+
     // Final format of the content
     const formattedContent = formatTextIntoParagraphs(currentStreamingMessage.content);
     currentStreamingMessage.contentElement.innerHTML = formattedContent;
     currentStreamingMessage.contentElement.classList.remove('streaming-content');
-    
+
+    const targetElement = currentStreamingMessage.element;
+
+    // Add undo button
+    const undoBtn = document.createElement('span');
+    undoBtn.className = 'undo-btn';
+    undoBtn.textContent = 'Undo';
+    undoBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        revertToRaw(targetElement);
+    });
+    targetElement.appendChild(undoBtn);
+
+    if (!autoEval) {
+        const evalBtn = document.createElement('span');
+        evalBtn.className = 'eval-btn';
+        evalBtn.textContent = 'Eval';
+        evalBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            requestEvaluation(targetElement);
+        });
+        targetElement.appendChild(evalBtn);
+    }
+
     currentStreamingMessage = null;
     
     setTimeout(function() {
@@ -166,13 +212,13 @@ function finishStreamingMessage() {
     }, 100);
 }
 
-function addGeneratedStory(content, generationMode, sceneId, beatId) {
+function addGeneratedStory(content, generationMode, sceneId, beatId, rawText, storyEntryId) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message ai';
 
     sceneId = sceneId || window.leftPane.getCurrentScene() || '1:s1';
-    beatId = beatId || generateNextBeatId();
+    beatId = beatId || generateNextBeatId(sceneId);
 
     const sceneDiv = document.createElement('div');
     sceneDiv.className = 'scene-boundary';
@@ -190,6 +236,20 @@ function addGeneratedStory(content, generationMode, sceneId, beatId) {
     beatDiv.appendChild(contentDiv);
     sceneDiv.appendChild(beatDiv);
     messageDiv.appendChild(sceneDiv);
+    if (storyEntryId) {
+        messageDiv.dataset.storyEntryId = storyEntryId;
+    }
+    if (rawText) {
+        messageDiv.dataset.rawText = rawText;
+        const undoBtn = document.createElement('span');
+        undoBtn.className = 'undo-btn';
+        undoBtn.textContent = 'Undo';
+        undoBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            revertToRaw(messageDiv);
+        });
+        messageDiv.appendChild(undoBtn);
+    }
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
@@ -208,6 +268,69 @@ function flashBackground(color) {
     setTimeout(function() {
         body.classList.remove('flash-' + color);
     }, 1000);
+}
+
+function revertToRaw(messageEl) {
+    if (!messageEl || !messageEl.dataset.rawText) return;
+    const raw = messageEl.dataset.rawText;
+    const contentDiv = messageEl.querySelector('.generation-content');
+    if (contentDiv) {
+        contentDiv.innerHTML = formatTextIntoParagraphs(raw);
+    }
+    messageEl.classList.remove('processed');
+}
+
+function requestEvaluation(messageEl) {
+    if (!messageEl || !messageEl.dataset.storyEntryId) return;
+    messageEl.classList.add('processing');
+    window.socket.emit('evaluate_entry', { story_entry_id: messageEl.dataset.storyEntryId });
+}
+
+function applyEvaluationResult(messageEl, data) {
+    if (!messageEl) return;
+    messageEl.classList.remove('processing');
+    messageEl.classList.add('processed');
+    messageEl.classList.remove('raw-output');
+    if (data.raw_text) {
+        messageEl.dataset.rawText = data.raw_text;
+    }
+    if (data.processed_text) {
+        const segments = data.segments || [{ text: data.processed_text }];
+        let sceneDiv = messageEl.querySelector('.scene-boundary');
+        let beatDiv = sceneDiv.querySelector('.beat-boundary');
+        const contentDiv = beatDiv.querySelector('.generation-content');
+        contentDiv.innerHTML = formatTextIntoParagraphs(segments[0].text);
+        for (let i = 1; i < segments.length; i++) {
+            const seg = segments[i];
+            if (seg.new_scene) {
+                const newSceneId = generateNextSceneId();
+                const newScene = document.createElement('div');
+                newScene.className = 'scene-boundary';
+                newScene.dataset.sceneId = newSceneId;
+                const newBeatId = generateNextBeatId(newSceneId);
+                const newBeat = document.createElement('div');
+                newBeat.className = 'beat-boundary';
+                newBeat.dataset.beatId = newBeatId;
+                const c = document.createElement('div');
+                c.className = 'generation-content';
+                c.innerHTML = formatTextIntoParagraphs(seg.text);
+                newBeat.appendChild(c);
+                newScene.appendChild(newBeat);
+                sceneDiv.parentNode.insertBefore(newScene, sceneDiv.nextSibling);
+                sceneDiv = newScene;
+            } else {
+                const newBeat = document.createElement('div');
+                newBeat.className = 'beat-boundary';
+                const newBeatId = generateNextBeatId(sceneDiv.dataset.sceneId);
+                newBeat.dataset.beatId = newBeatId;
+                const c = document.createElement('div');
+                c.className = 'generation-content';
+                c.innerHTML = formatTextIntoParagraphs(seg.text);
+                newBeat.appendChild(c);
+                sceneDiv.appendChild(newBeat);
+            }
+        }
+    }
 }
 
 function addAIMessage(content) {
@@ -270,12 +393,14 @@ function generateInitialStory() {
     }
     
     content += '</div></div>';
-    
+
     document.getElementById('chatMessages').innerHTML = '<div class="message ai">' + content + '</div>';
-    
+
     setTimeout(function() {
         observeSceneBoundaries();
         window.leftPane.updateSceneInfo(window.leftPane.getCurrentScene());
+        sceneCounter = 1;
+        beatCounters['1:s1'] = 1;
     }, 100);
 }
 
@@ -297,7 +422,8 @@ function handleImmediateGeneration(userInput) {
         content: userInput,
         story_id: '1',
         scene_id: window.leftPane.getCurrentScene() || '1:s1',
-        beat_id: generateNextBeatId()
+        beat_id: generateNextBeatId(window.leftPane.getCurrentScene() || '1:s1'),
+        skip_eval: !autoEval
     };
 
     // Start streaming message
@@ -325,7 +451,8 @@ function handleChatGeneration(userInput) {
         content: userInput,
         story_id: '1',
         scene_id: window.leftPane.getCurrentScene() || '1:s1',
-        beat_id: generateNextBeatId()
+        beat_id: generateNextBeatId(window.leftPane.getCurrentScene() || '1:s1'),
+        skip_eval: !autoEval
     };
 
     startStreamingMessage('chat', requestData.scene_id, requestData.beat_id);
@@ -334,11 +461,6 @@ function handleChatGeneration(userInput) {
     window.socket.emit('user_message', requestData);
 }
 
-function generateNextBeatId() {
-    // Simple beat ID generation - in real system this would be more sophisticated
-    const timestamp = Date.now().toString(36);
-    return '1:b' + timestamp;
-}
 
 // Socket event handlers for streaming
 function handleGenerationStream(data) {
@@ -360,9 +482,34 @@ function handleGenerationComplete(data) {
     // Finish streaming if in progress
     if (currentStreamingMessage) {
         finishStreamingMessage();
+        if (data.segments) {
+            applyEvaluationResult(currentStreamingMessage.element, data);
+            currentStreamingMessage.element.dataset.storyEntryId = data.story_entry_id || '';
+        } else if (data.generated_text) {
+            const formatted = formatTextIntoParagraphs(data.generated_text);
+            currentStreamingMessage.contentElement.innerHTML = formatted;
+            currentStreamingMessage.element.classList.add('processed');
+            currentStreamingMessage.element.dataset.storyEntryId = data.story_entry_id || '';
+            if (data.raw_text) {
+                currentStreamingMessage.element.dataset.rawText = data.raw_text;
+            }
+        }
     } else {
         // Fallback for non-streaming response
-        addGeneratedStory(data.generated_text || data.content, data.generation_mode || 'immediate');
+        addGeneratedStory(
+            data.generated_text || data.content,
+            data.generation_mode || 'immediate',
+            null,
+            null,
+            data.raw_text || data.content,
+            data.story_entry_id || ''
+        );
+        if (data.segments) {
+            const messageEl = document.querySelector('.message.ai[data-story-entry-id="' + data.story_entry_id + '"]');
+            if (messageEl) {
+                applyEvaluationResult(messageEl, data);
+            }
+        }
     }
     
     // Flash the background
@@ -406,21 +553,56 @@ function handleStoryResponse(data) {
         currentGenSystemMessage = null;
     }
     const wasStreaming = !!currentStreamingMessage;
-    if (wasStreaming) {
-        finishStreamingMessage();
-    }
 
     if (data.success !== false) {
         if (!wasStreaming) {
-            addGeneratedStory(data.content, data.generation_mode || 'chat');
+            addGeneratedStory(
+                data.content,
+                data.generation_mode || 'chat',
+                null,
+                null,
+                data.raw_text || data.content,
+                data.story_entry_id || ''
+            );
+            if (data.segments) {
+                const messageEl = document.querySelector('.message.ai[data-story-entry-id="' + data.story_entry_id + '"]');
+                if (messageEl) {
+                    applyEvaluationResult(messageEl, data);
+                }
+            }
+        } else {
+            if (currentStreamingMessage && data.content) {
+                const formatted = formatTextIntoParagraphs(data.content);
+                currentStreamingMessage.contentElement.innerHTML = formatted;
+                currentStreamingMessage.element.classList.add('processed');
+                if (data.raw_text) {
+                    currentStreamingMessage.element.dataset.rawText = data.raw_text;
+                }
+            }
         }
     } else {
         addSystemMessage('❌ Generation failed: ' + (data.error || 'Unknown error'));
     }
 
+    if (wasStreaming) {
+        finishStreamingMessage();
+    }
+
     document.getElementById('messageInput').disabled = false;
     document.getElementById('sendButton').disabled = false;
     document.getElementById('sendButton').textContent = 'Send';
+}
+
+function handleEvaluationResult(data) {
+    console.log('Evaluation result:', data);
+    if (data.success === false) {
+        addSystemMessage('❌ Eval failed: ' + (data.error || 'Unknown'));
+        return;
+    }
+    const messageEl = document.querySelector('.message.ai[data-story-entry-id="' + data.story_entry_id + '"]');
+    if (messageEl) {
+        applyEvaluationResult(messageEl, data);
+    }
 }
 
 // Input handling
@@ -520,6 +702,7 @@ function setupClickHandlers() {
 function setupMessageToggles() {
     const systemToggle = document.getElementById('toggleSystemMessages');
     const userToggle = document.getElementById('toggleUserMessages');
+    const evalToggle = document.getElementById('toggleAutoEval');
 
     if (systemToggle) {
         systemToggle.addEventListener('click', function() {
@@ -538,6 +721,20 @@ function setupMessageToggles() {
                 el.style.display = showUserMessages ? '' : 'none';
             });
             userToggle.classList.toggle('off', !showUserMessages);
+        });
+    }
+
+    if (evalToggle) {
+        evalToggle.addEventListener('click', function() {
+            autoEval = !autoEval;
+            evalToggle.classList.toggle('off', !autoEval);
+            if (autoEval) {
+                document.querySelectorAll('.message.ai.raw-output').forEach(function(el) {
+                    if (!el.classList.contains('processing') && !el.classList.contains('processed')) {
+                        requestEvaluation(el);
+                    }
+                });
+            }
         });
     }
 }
@@ -559,11 +756,24 @@ window.storyUI = {
     handleImmediateGeneration: handleImmediateGeneration,
     handleChatGeneration: handleChatGeneration,
     generateNextBeatId: generateNextBeatId,
+    generateNextSceneId: generateNextSceneId,
     handleGenerationStream: handleGenerationStream,
     handleGenerationComplete: handleGenerationComplete,
     handleGenerationError: handleGenerationError,
     handleStoryResponse: handleStoryResponse,
+    handleEvaluationResult: handleEvaluationResult,
     setupInputHandlers: setupInputHandlers,
     setupClickHandlers: setupClickHandlers,
-    setupMessageToggles: setupMessageToggles
+    setupMessageToggles: setupMessageToggles,
+    revertToRaw: revertToRaw,
+    toggleAutoEval: function() {
+        autoEval = !autoEval;
+        if (autoEval) {
+            document.querySelectorAll('.message.ai.raw-output').forEach(function(el) {
+                if (!el.classList.contains('processing') && !el.classList.contains('processed')) {
+                    requestEvaluation(el);
+                }
+            });
+        }
+    }
 };
