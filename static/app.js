@@ -88,6 +88,7 @@ if (typeof window.storywriterApp === 'undefined') {
         window.storyUI.initializeSceneObserver();
         window.storyUI.setupInputHandlers();
         window.storyUI.setupClickHandlers();
+        window.storyUI.setupMessageToggles();
         
         // Detail pane controls
         document.getElementById('closeDetailButton').addEventListener('click', window.entityDetails.closeDetailPane);

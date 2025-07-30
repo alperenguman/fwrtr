@@ -4,6 +4,9 @@
 // Scroll observer for scene tracking
 let sceneObserver;
 let currentStreamingMessage = null;
+let currentGenSystemMessage = null;
+let showSystemMessages = true;
+let showUserMessages = true;
 
 function initializeSceneObserver() {
     if ('IntersectionObserver' in window) {
@@ -34,13 +37,17 @@ function observeSceneBoundaries() {
 }
 
 // UI Functions
-function addSystemMessage(text) {
+function addSystemMessage(text, temporary = false) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message system';
     messageDiv.innerHTML = text + ' <span style="color: #555; font-size: 11px;">' + new Date().toLocaleTimeString() + '</span>';
+    if (temporary) {
+        messageDiv.classList.add('temp-system');
+    }
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    return messageDiv;
 }
 
 function formatTextIntoParagraphs(text) {
@@ -95,34 +102,35 @@ function formatTextIntoParagraphs(text) {
     return paragraphs.map(para => '<p>' + processEntityLinks(para) + '</p>').join('');
 }
 
-function startStreamingMessage(generationMode) {
+function startStreamingMessage(generationMode, sceneId, beatId) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message generated ' + generationMode + ' streaming';
-    
-    // Add generation mode indicator
-    const modeIndicator = generationMode === 'immediate' ? '⚡ Immediate' : '🔄 Simulation';
-    const timestamp = new Date().toLocaleTimeString();
-    
-    messageDiv.innerHTML = 
-        '<div class="generation-header">' +
-            '<span class="generation-mode">' + modeIndicator + '</span>' +
-            '<span class="generation-time">' + timestamp + '</span>' +
-            '<span class="streaming-indicator">●</span>' +
-        '</div>' +
-        '<div class="generation-content streaming-content">' +
-            '<div class="streaming-cursor">▊</div>' +
-        '</div>';
-    
+    messageDiv.className = 'message ai streaming';
+
+    const sceneDiv = document.createElement('div');
+    sceneDiv.className = 'scene-boundary';
+    sceneDiv.dataset.sceneId = sceneId;
+
+    const beatDiv = document.createElement('div');
+    beatDiv.className = 'beat-boundary';
+    beatDiv.dataset.beatId = beatId;
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'generation-content streaming-content';
+    contentDiv.innerHTML = '<div class="streaming-cursor">▊</div>';
+
+    beatDiv.appendChild(contentDiv);
+    sceneDiv.appendChild(beatDiv);
+    messageDiv.appendChild(sceneDiv);
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
+
     currentStreamingMessage = {
         element: messageDiv,
         content: '',
-        contentElement: messageDiv.querySelector('.streaming-content')
+        contentElement: contentDiv
     };
-    
+
     return currentStreamingMessage;
 }
 
@@ -142,14 +150,10 @@ function appendToStreamingMessage(text) {
 
 function finishStreamingMessage() {
     if (!currentStreamingMessage) return;
-    
-    // Remove streaming classes and cursor
+
+    // Remove streaming class and cursor
     currentStreamingMessage.element.classList.remove('streaming');
-    const streamingIndicator = currentStreamingMessage.element.querySelector('.streaming-indicator');
-    if (streamingIndicator) {
-        streamingIndicator.remove();
-    }
-    
+
     // Final format of the content
     const formattedContent = formatTextIntoParagraphs(currentStreamingMessage.content);
     currentStreamingMessage.contentElement.innerHTML = formattedContent;
@@ -162,24 +166,30 @@ function finishStreamingMessage() {
     }, 100);
 }
 
-function addGeneratedStory(content, generationMode) {
+function addGeneratedStory(content, generationMode, sceneId, beatId) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message generated ' + generationMode;
-    
-    // Add generation mode indicator
-    const modeIndicator = generationMode === 'immediate' ? '⚡ Immediate' : '🔄 Simulation';
-    const timestamp = new Date().toLocaleTimeString();
-    
+    messageDiv.className = 'message ai';
+
+    sceneId = sceneId || window.leftPane.getCurrentScene() || '1:s1';
+    beatId = beatId || generateNextBeatId();
+
+    const sceneDiv = document.createElement('div');
+    sceneDiv.className = 'scene-boundary';
+    sceneDiv.dataset.sceneId = sceneId;
+
+    const beatDiv = document.createElement('div');
+    beatDiv.className = 'beat-boundary';
+    beatDiv.dataset.beatId = beatId;
+
     const formattedContent = formatTextIntoParagraphs(content);
-    
-    messageDiv.innerHTML = 
-        '<div class="generation-header">' +
-            '<span class="generation-mode">' + modeIndicator + '</span>' +
-            '<span class="generation-time">' + timestamp + '</span>' +
-        '</div>' +
-        '<div class="generation-content">' + formattedContent + '</div>';
-    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'generation-content';
+    contentDiv.innerHTML = formattedContent;
+
+    beatDiv.appendChild(contentDiv);
+    sceneDiv.appendChild(beatDiv);
+    messageDiv.appendChild(sceneDiv);
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
@@ -260,7 +270,6 @@ function generateInitialStory() {
     }
     
     content += '</div></div>';
-    content += '<p><em>Type story directions and press <strong>Ctrl+Enter</strong> for immediate generation (red flash), or <strong>Enter</strong> for chat!</em></p>';
     
     document.getElementById('chatMessages').innerHTML = '<div class="message ai">' + content + '</div>';
     
@@ -279,10 +288,10 @@ function handleImmediateGeneration(userInput) {
     document.getElementById('sendButton').textContent = 'Generating...';
     
     // Add generation indicator
-    addSystemMessage('🔥 Starting immediate generation...');
-    
-    // Start streaming message
-    startStreamingMessage('immediate');
+    if (currentGenSystemMessage) {
+        currentGenSystemMessage.remove();
+    }
+    currentGenSystemMessage = addSystemMessage('🔥 Starting immediate generation...', true);
     
     const requestData = {
         content: userInput,
@@ -290,6 +299,9 @@ function handleImmediateGeneration(userInput) {
         scene_id: window.leftPane.getCurrentScene() || '1:s1',
         beat_id: generateNextBeatId()
     };
+
+    // Start streaming message
+    startStreamingMessage('immediate', requestData.scene_id, requestData.beat_id);
     
     console.log('Sending generate_immediate request:', requestData);
     
@@ -304,9 +316,10 @@ function handleChatGeneration(userInput) {
     document.getElementById('sendButton').disabled = true;
     document.getElementById('sendButton').textContent = 'Generating...';
 
-    addSystemMessage('💬 Generating response...');
-
-    startStreamingMessage('chat');
+    if (currentGenSystemMessage) {
+        currentGenSystemMessage.remove();
+    }
+    currentGenSystemMessage = addSystemMessage('💬 Generating response...', true);
 
     const requestData = {
         content: userInput,
@@ -314,6 +327,8 @@ function handleChatGeneration(userInput) {
         scene_id: window.leftPane.getCurrentScene() || '1:s1',
         beat_id: generateNextBeatId()
     };
+
+    startStreamingMessage('chat', requestData.scene_id, requestData.beat_id);
 
     console.log('Sending user_message request:', requestData);
     window.socket.emit('user_message', requestData);
@@ -336,6 +351,11 @@ function handleGenerationStream(data) {
 
 function handleGenerationComplete(data) {
     console.log('✓ Generation complete:', data);
+
+    if (currentGenSystemMessage) {
+        currentGenSystemMessage.remove();
+        currentGenSystemMessage = null;
+    }
     
     // Finish streaming if in progress
     if (currentStreamingMessage) {
@@ -356,6 +376,11 @@ function handleGenerationComplete(data) {
 
 function handleGenerationError(data) {
     console.error('✗ Generation error:', data);
+
+    if (currentGenSystemMessage) {
+        currentGenSystemMessage.remove();
+        currentGenSystemMessage = null;
+    }
     
     // Finish streaming if in progress
     if (currentStreamingMessage) {
@@ -376,6 +401,10 @@ function handleGenerationError(data) {
 
 function handleStoryResponse(data) {
     console.log('Story response received:', data);
+    if (currentGenSystemMessage) {
+        currentGenSystemMessage.remove();
+        currentGenSystemMessage = null;
+    }
     const wasStreaming = !!currentStreamingMessage;
     if (wasStreaming) {
         finishStreamingMessage();
@@ -404,7 +433,19 @@ function setupInputHandlers() {
             const chatMessages = document.getElementById('chatMessages');
             const userMessage = document.createElement('div');
             userMessage.className = 'message user';
-            userMessage.textContent = message;
+            const toggle = document.createElement('span');
+            toggle.className = 'user-toggle';
+            toggle.textContent = '\u25BE';
+            const contentSpan = document.createElement('span');
+            contentSpan.className = 'user-content';
+            contentSpan.textContent = message;
+            toggle.addEventListener('click', function() {
+                contentSpan.classList.toggle('hidden');
+                userMessage.classList.toggle('collapsed');
+                toggle.textContent = contentSpan.classList.contains('hidden') ? '\u25B8' : '\u25BE';
+            });
+            userMessage.appendChild(toggle);
+            userMessage.appendChild(contentSpan);
             chatMessages.appendChild(userMessage);
             
             // Check for generation mode (ctrl+enter for immediate generation)
@@ -476,6 +517,31 @@ function setupClickHandlers() {
     });
 }
 
+function setupMessageToggles() {
+    const systemToggle = document.getElementById('toggleSystemMessages');
+    const userToggle = document.getElementById('toggleUserMessages');
+
+    if (systemToggle) {
+        systemToggle.addEventListener('click', function() {
+            showSystemMessages = !showSystemMessages;
+            document.querySelectorAll('.message.system').forEach(el => {
+                el.style.display = showSystemMessages ? '' : 'none';
+            });
+            systemToggle.classList.toggle('off', !showSystemMessages);
+        });
+    }
+
+    if (userToggle) {
+        userToggle.addEventListener('click', function() {
+            showUserMessages = !showUserMessages;
+            document.querySelectorAll('.message.user').forEach(el => {
+                el.style.display = showUserMessages ? '' : 'none';
+            });
+            userToggle.classList.toggle('off', !showUserMessages);
+        });
+    }
+}
+
 // Export functions to global scope
 window.storyUI = {
     initializeSceneObserver: initializeSceneObserver,
@@ -498,5 +564,6 @@ window.storyUI = {
     handleGenerationError: handleGenerationError,
     handleStoryResponse: handleStoryResponse,
     setupInputHandlers: setupInputHandlers,
-    setupClickHandlers: setupClickHandlers
+    setupClickHandlers: setupClickHandlers,
+    setupMessageToggles: setupMessageToggles
 };
