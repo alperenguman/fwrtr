@@ -29,3 +29,31 @@ Audio/Visual representations of entities, states, relationships.
 
 ## Inspirations
 Real world to story entity imports.
+
+
+Agents
+
+Agents have clearly defined tasks and store their main prompts in the database, they're subject to revision by the SystemAgent as they adapt to evolving needs of the system.
+
+## PrepAgent
+
+## GeneratorAgent
+Raw generator of text.
+
+## EntityAgent
+Identifies entities in a bound area of text. Creates and manages entity state and relationships.
+
+## ContinuityGuard
+Preserves continuity of entities across story.
+
+## EvalAgent
+Evaluates the output, manages story/beat classification and performs assesment of faitfulness to intent/quality.
+
+## SystemAgent
+Observes and revises the main prompts of other agents, enters them into the database as new versions, as needed. Orchestrator.
+
+## PerceptionAgent
+
+## AwarenessAgent
+
+## RepresentationAgent
