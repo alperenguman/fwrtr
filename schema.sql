@@ -470,3 +470,15 @@ VALUES (
     1
 );
 
+INSERT INTO agents (agent_type, agent_task_id, agent_name, agent_description, agent_instructions, agent_function_calls, model, is_active)
+VALUES (
+    'GeneratorAgent',
+    1,
+    'Story Generator',
+    'Produces new story text from scene context and user direction.',
+    'Continue the story in an engaging style using the provided context. Keep paragraphs short and descriptive.',
+    '{}',
+    'gpt-3.5-turbo',
+    1
+);
+

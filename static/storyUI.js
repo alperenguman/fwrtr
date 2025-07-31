@@ -295,12 +295,37 @@ function applyEvaluationResult(messageEl, data) {
         messageEl.dataset.rawText = data.raw_text;
     }
     if (data.processed_text) {
-        const segments = data.segments || [{ text: data.processed_text }];
+        const segments = data.segments || [{ text: data.processed_text, new_scene: data.new_scene, new_beat: data.new_beat }];
+
         let sceneDiv = messageEl.querySelector('.scene-boundary');
         let beatDiv = sceneDiv.querySelector('.beat-boundary');
         const contentDiv = beatDiv.querySelector('.generation-content');
-        contentDiv.innerHTML = formatTextIntoParagraphs(segments[0].text);
-        for (let i = 1; i < segments.length; i++) {
+
+        let startIndex = 0;
+
+        if (!data.new_scene && !data.new_beat) {
+            const prevMessage = messageEl.previousElementSibling;
+            if (prevMessage && prevMessage.classList.contains('message')) {
+                const prevBeats = prevMessage.querySelectorAll('.beat-boundary');
+                const lastBeat = prevBeats[prevBeats.length - 1];
+                if (lastBeat) {
+                    const prevContent = lastBeat.querySelector('.generation-content');
+                    prevContent.innerHTML += formatTextIntoParagraphs(segments[0].text);
+                    startIndex = 1;
+                }
+            }
+        }
+
+        if (startIndex >= segments.length) {
+            messageEl.remove();
+            setTimeout(observeSceneBoundaries, 100);
+            return;
+        }
+
+        const firstSeg = segments[startIndex];
+        contentDiv.innerHTML = formatTextIntoParagraphs(firstSeg.text);
+
+        for (let i = startIndex + 1; i < segments.length; i++) {
             const seg = segments[i];
             if (seg.new_scene) {
                 const newSceneId = generateNextSceneId();

@@ -89,7 +89,8 @@
 }
 
 .message.ai.raw-output {
-    background: #1a1a1a;
+    background: #221111; /* darker to highlight unprocessed text */
+    border-left: 3px dashed #4a90e2;
     animation: flash-raw 0.4s ease-in-out;
 }
 
