@@ -2,8 +2,7 @@
 
 A real-time storytelling playground where every word is a live object. Creators improvise scenes, branch realities, and perfect showpiece moments without ever losing track of their world.
 
-Tech stack is a SQLite db, python-flask-socketio backend and html/js/css frontend. 
-
+Key Concepts
 
 ## Classes
 Definition of concepts with inheritable attributes.
@@ -30,30 +29,29 @@ Audio/Visual representations of entities, states, relationships.
 ## Inspirations
 Real world to story entity imports.
 
-
-Agents
+## Agents
 
 Agents have clearly defined tasks and store their main prompts in the database, they're subject to revision by the SystemAgent as they adapt to evolving needs of the system.
 
-## PrepAgent
+### PrepAgent
 
-## GeneratorAgent
+### GeneratorAgent
 Raw generator of text.
 
-## EntityAgent
+### EntityAgent
 Identifies entities in a bound area of text. Creates and manages entity state and relationships.
 
-## ContinuityGuard
+### ContinuityGuard
 Preserves continuity of entities across story.
 
-## EvalAgent
+### EvalAgent
 Evaluates the output, manages story/beat classification and performs assesment of faitfulness to intent/quality.
 
-## SystemAgent
+e SystemAgent
 Observes and revises the main prompts of other agents, enters them into the database as new versions, as needed. Orchestrator.
 
-## PerceptionAgent
+### PerceptionAgent
 
-## AwarenessAgent
+### AwarenessAgent
 
-## RepresentationAgent
+### RepresentationAgent
