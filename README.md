@@ -2,7 +2,6 @@
 
 A real-time storytelling playground where every word is a live object. Creators improvise scenes, branch realities, and perfect showpiece moments without ever losing track of their world.
 
-Key Concepts
 
 ## Classes
 Definition of concepts with inheritable attributes.
@@ -47,7 +46,7 @@ Preserves continuity of entities across story.
 ### EvalAgent
 Evaluates the output, manages story/beat classification and performs assesment of faitfulness to intent/quality.
 
-e SystemAgent
+### SystemAgent
 Observes and revises the main prompts of other agents, enters them into the database as new versions, as needed. Orchestrator.
 
 ### PerceptionAgent
