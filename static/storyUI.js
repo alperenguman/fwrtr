@@ -238,6 +238,7 @@ function addGeneratedStory(content, generationMode, sceneId, beatId, rawText, st
     messageDiv.appendChild(sceneDiv);
     if (storyEntryId) {
         messageDiv.dataset.storyEntryId = storyEntryId;
+        messageDiv.dataset.nodeId = storyEntryId;
     }
     if (rawText) {
         messageDiv.dataset.rawText = rawText;
@@ -764,6 +765,46 @@ function setupMessageToggles() {
     }
 }
 
+// Drag and drop support for story nodes
+function setupNodeDragDrop() {
+    const container = document.getElementById('chatMessages');
+    if (!container || typeof Sortable === 'undefined') return;
+
+    Sortable.create(container, {
+        animation: 150,
+        onEnd: function(evt) {
+            const item = evt.item;
+            const nodeId = item.dataset.nodeId;
+            if (!nodeId) return;
+            const newPosition = evt.newIndex;
+            const parentId = evt.to.dataset.parentId || null;
+
+            fetch(`/api/nodes/${nodeId}/move`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parent_id: parentId, position: newPosition })
+            })
+            .then(() => refreshNodeHierarchy());
+        }
+    });
+}
+
+function refreshNodeHierarchy() {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    fetch('/api/nodes')
+        .then(r => r.json())
+        .then(nodes => {
+            const topNodes = nodes.filter(n => n.parent_id === null)
+                                  .sort((a, b) => a.position - b.position);
+            topNodes.forEach(node => {
+                const el = container.querySelector(`[data-node-id="${node.node_id}"]`);
+                if (el) container.appendChild(el);
+            });
+        });
+}
+
 // Export functions to global scope
 window.storyUI = {
     initializeSceneObserver: initializeSceneObserver,
@@ -790,6 +831,8 @@ window.storyUI = {
     setupInputHandlers: setupInputHandlers,
     setupClickHandlers: setupClickHandlers,
     setupMessageToggles: setupMessageToggles,
+    setupNodeDragDrop: setupNodeDragDrop,
+    refreshNodeHierarchy: refreshNodeHierarchy,
     revertToRaw: revertToRaw,
     toggleAutoEval: function() {
         autoEval = !autoEval;
@@ -802,3 +845,5 @@ window.storyUI = {
         }
     }
 };
+
+document.addEventListener('DOMContentLoaded', setupNodeDragDrop);

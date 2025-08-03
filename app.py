@@ -603,6 +603,73 @@ def get_relationships():
     except Exception as e:
         return {'error': str(e)}, 500
 
+@app.route('/api/nodes')
+def get_nodes():
+    """Get all story nodes"""
+    try:
+        conn = get_db()
+        nodes = conn.execute(
+            'SELECT * FROM nodes ORDER BY parent_id, position'
+        ).fetchall()
+        conn.close()
+        return [dict(node) for node in nodes]
+    except Exception as e:
+        return {'error': str(e)}, 500
+
+@app.route('/api/nodes/<int:node_id>/move', methods=['POST'])
+def move_node(node_id):
+    """Update a node's parent and position"""
+    data = request.get_json() or {}
+    parent_id = data.get('parent_id')
+    position = data.get('position', 0)
+
+    try:
+        conn = get_db()
+        current = conn.execute(
+            'SELECT parent_id, position FROM nodes WHERE node_id = ?',
+            (node_id,)
+        ).fetchone()
+        if not current:
+            conn.close()
+            return {'error': 'Node not found'}, 404
+
+        old_parent = current['parent_id']
+        old_position = current['position']
+
+        # Compact old siblings
+        if old_parent is None:
+            conn.execute(
+                'UPDATE nodes SET position = position - 1 WHERE parent_id IS NULL AND position > ?',
+                (old_position,)
+            )
+        else:
+            conn.execute(
+                'UPDATE nodes SET position = position - 1 WHERE parent_id = ? AND position > ?',
+                (old_parent, old_position)
+            )
+
+        # Make room for new position
+        if parent_id is None:
+            conn.execute(
+                'UPDATE nodes SET position = position + 1 WHERE parent_id IS NULL AND position >= ?',
+                (position,)
+            )
+        else:
+            conn.execute(
+                'UPDATE nodes SET position = position + 1 WHERE parent_id = ? AND position >= ?',
+                (parent_id, position)
+            )
+
+        conn.execute(
+            'UPDATE nodes SET parent_id = ?, position = ?, updated_at = ? WHERE node_id = ?',
+            (parent_id, position, datetime.now().isoformat(), node_id)
+        )
+        conn.commit()
+        conn.close()
+        return {'success': True}
+    except Exception as e:
+        return {'error': str(e)}, 500
+
 if __name__ == '__main__':
     init_db()
     print("Starting Storywriter Flask-SocketIO server...")
