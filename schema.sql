@@ -261,6 +261,23 @@ CREATE TABLE representations (
     FOREIGN KEY (state_id) REFERENCES states(state_id)
 );
 
+-- Nodes table links parsed elements back to their originating representation
+CREATE TABLE nodes (
+    node_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    representation_id INTEGER NOT NULL,
+    node_type TEXT NOT NULL, -- 'entity', 'state', or 'relationship'
+    entity_id INTEGER,
+    state_id INTEGER,
+    relationship_id INTEGER,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (representation_id) REFERENCES representations(representation_id),
+    FOREIGN KEY (entity_id) REFERENCES entities(entity_id),
+    FOREIGN KEY (state_id) REFERENCES states(state_id),
+    FOREIGN KEY (relationship_id) REFERENCES relationships(relationship_id)
+);
+
 -- Stories table for generated story content with versioning
 CREATE TABLE stories (
     story_entry_id INTEGER PRIMARY KEY AUTOINCREMENT,

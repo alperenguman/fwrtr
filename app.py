@@ -1,9 +1,11 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 import sqlite3
 import json
 from datetime import datetime
 import os
+import re
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'storywriter_secret_key'
@@ -602,6 +604,84 @@ def get_relationships():
         return [dict(rel) for rel in relationships]
     except Exception as e:
         return {'error': str(e)}, 500
+
+
+@app.route('/api/representations', methods=['POST'])
+def upload_representation():
+    """Upload a media representation with accompanying text and create nodes."""
+    try:
+        media = request.files.get('media')
+        text = request.form.get('text', '')
+        rep_type = request.form.get('type', 'visual')
+        style = request.form.get('style')
+        composition = request.form.get('composition')
+        relationship_id = request.form.get('relationship_id')
+        state_id = request.form.get('state_id')
+        story_id = request.form.get('story_id', '1')
+        scene_id = request.form.get('scene_id', '1:s1')
+        beat_id = request.form.get('beat_id', '1:b1')
+
+        asset_link = None
+        if media:
+            filename = secure_filename(media.filename)
+            upload_dir = os.path.join('static', 'uploads')
+            os.makedirs(upload_dir, exist_ok=True)
+            file_path = os.path.join(upload_dir, filename)
+            media.save(file_path)
+            asset_link = file_path
+
+        conn = get_db()
+        cur = conn.execute(
+            'INSERT INTO representations (relationship_id, state_id, type, style, composition, asset_link) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            (relationship_id, state_id, rep_type, style, composition, asset_link)
+        )
+        representation_id = cur.lastrowid
+
+        created_nodes = []
+
+        if text:
+            story_context = {
+                'story_id': story_id,
+                'scene_id': scene_id,
+                'beat_id': beat_id
+            }
+            from entity_agent import EntityAgent
+            agent = EntityAgent('EntityAgent', 1, conn)
+            res = agent.execute(text, story_context, extract_only=True)
+            if res.get('success'):
+                entities = res.get('entities', [])
+                for ent in entities:
+                    cur = conn.execute(
+                        'INSERT INTO nodes (representation_id, entity_id, node_type, content) '
+                        'VALUES (?, ?, ?, ?)',
+                        (representation_id, ent.get('entity_id'), 'entity', ent['name'])
+                    )
+                    created_nodes.append({'node_id': cur.lastrowid, 'type': 'entity', 'content': ent['name']})
+
+                # Simple relationship node using first two entities if available
+                if len(entities) >= 2:
+                    rel_content = f"{entities[0]['name']} related to {entities[1]['name']}"
+                    cur = conn.execute(
+                        'INSERT INTO nodes (representation_id, node_type, content) VALUES (?, ?, ?)',
+                        (representation_id, 'relationship', rel_content)
+                    )
+                    created_nodes.append({'node_id': cur.lastrowid, 'type': 'relationship', 'content': rel_content})
+
+            # Basic state nodes - split text into sentences
+            sentences = [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]
+            for s in sentences:
+                cur = conn.execute(
+                    'INSERT INTO nodes (representation_id, node_type, content) VALUES (?, ?, ?)',
+                    (representation_id, 'state', s)
+                )
+                created_nodes.append({'node_id': cur.lastrowid, 'type': 'state', 'content': s})
+
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'representation_id': representation_id, 'nodes': created_nodes})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     init_db()
