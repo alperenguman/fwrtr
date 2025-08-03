@@ -71,14 +71,14 @@ def handle_evaluate_entry(data):
         return
 
     conn = get_db()
-    entry = conn.execute('SELECT story_id, scene_id, node_id, raw_text FROM stories WHERE story_entry_id = ?', (story_entry_id,)).fetchone()
+    entry = conn.execute('SELECT story_id, scene_id, beat_id, raw_text FROM stories WHERE story_entry_id = ?', (story_entry_id,)).fetchone()
     if not entry:
         emit('evaluation_result', {'success': False, 'error': 'Entry not found'})
         return
 
     from eval_agent import EvalAgent
     eval_agent = EvalAgent('EvalAgent', 1, conn)
-    res = eval_agent.execute(entry['story_id'], entry['scene_id'], entry['node_id'], entry['raw_text'])
+    res = eval_agent.execute(entry['story_id'], entry['scene_id'], entry['beat_id'], entry['raw_text'])
 
     if res.get('success'):
         conn.execute(
@@ -97,13 +97,13 @@ def handle_user_message(data):
     content = data['content']
     story_id = data.get('story_id', '1')
     scene_id = data.get('scene_id', '1:s1')
-    node_id = data.get('node_id', '1:n1')
+    beat_id = data.get('beat_id', '1:b3')
     skip_eval = data.get('skip_eval', False)
     skip_eval = data.get('skip_eval', False)
     
     print(f"=== USER MESSAGE REQUEST ===")
     print(f"User input: {content}")
-    print(f"Story ID: {story_id}, Scene: {scene_id}, Node: {node_id}")
+    print(f"Story ID: {story_id}, Scene: {scene_id}, Beat: {beat_id}")
     
     try:
         # Import and create GeneratorAgent
@@ -118,7 +118,7 @@ def handle_user_message(data):
         result = generator.execute(
             story_id=story_id,
             scene_id=scene_id,
-            node_id=node_id,
+            beat_id=beat_id,
             user_input=content,
             generation_mode="immediate",
             stream_callback=lambda chunk: socketio.emit('generation_stream', {'chunk': chunk}, to=request.sid)
@@ -128,14 +128,14 @@ def handle_user_message(data):
             # Evaluate with EvalAgent
             from eval_agent import EvalAgent
             eval_agent = EvalAgent('EvalAgent', 1, get_db())
-            eval_res = eval_agent.execute(story_id, scene_id, node_id, result['generated_text'])
+            eval_res = eval_agent.execute(story_id, scene_id, beat_id, result['generated_text'])
             if eval_res.get('success'):
                 processed_text = eval_res['processed_text']
                 generator.update_story_entry_text(result['story_entry_id'], processed_text)
                 result['generated_text'] = processed_text
                 result['segments'] = eval_res.get('segments')
                 result['new_scene'] = eval_res.get('new_scene')
-                result['new_node'] = eval_res.get('new_node')
+                result['new_beat'] = eval_res.get('new_beat')
         
         print(f"User message generation result: {result}")
         
@@ -147,7 +147,7 @@ def handle_user_message(data):
                 'generation_mode': 'chat',
                 'story_entry_id': result.get('story_entry_id'),
                 'new_scene': result.get('new_scene'),
-                'new_node': result.get('new_node'),
+                'new_beat': result.get('new_beat'),
                 'raw_text': result.get('raw_text'),
                 'segments': result.get('segments')
             })
@@ -173,12 +173,12 @@ def handle_immediate_generation(data):
     user_input = data.get('content', '')
     story_id = data.get('story_id', '1')
     scene_id = data.get('scene_id', '1:s1')
-    node_id = data.get('node_id', '1:n1')
+    beat_id = data.get('beat_id', '1:b3')
     skip_eval = data.get('skip_eval', False)
     
     print(f"=== IMMEDIATE GENERATION REQUEST ===")
     print(f"User input: {user_input}")
-    print(f"Story ID: {story_id}, Scene: {scene_id}, Node: {node_id}")
+    print(f"Story ID: {story_id}, Scene: {scene_id}, Beat: {beat_id}")
     
     try:
         # Import and create GeneratorAgent
@@ -194,24 +194,24 @@ def handle_immediate_generation(data):
         result = generator.execute(
             story_id=story_id,
             scene_id=scene_id,
-            node_id=node_id,
+            beat_id=beat_id,
             user_input=user_input,
             generation_mode="immediate",
             stream_callback=lambda chunk: socketio.emit('generation_stream', {'chunk': chunk}, to=request.sid)
         )
 
         if not skip_eval:
-            # Evaluate the generated text for node/scene boundaries
+            # Evaluate the generated text for beat/scene boundaries
             from eval_agent import EvalAgent
             eval_agent = EvalAgent('EvalAgent', 1, get_db())
-            eval_res = eval_agent.execute(story_id, scene_id, node_id, result['generated_text'])
+            eval_res = eval_agent.execute(story_id, scene_id, beat_id, result['generated_text'])
             if eval_res.get('success'):
                 processed_text = eval_res['processed_text']
                 generator.update_story_entry_text(result['story_entry_id'], processed_text)
                 result['generated_text'] = processed_text
                 result['segments'] = eval_res.get('segments')
                 result['new_scene'] = eval_res.get('new_scene')
-                result['new_node'] = eval_res.get('new_node')
+                result['new_beat'] = eval_res.get('new_beat')
         
         print(f"Generation result: {result}")
         
@@ -224,7 +224,7 @@ def handle_immediate_generation(data):
                 'story_entry_id': result.get('story_entry_id'),
                 'flash_color': 'red',
                 'new_scene': result.get('new_scene'),
-                'new_node': result.get('new_node'),
+                'new_beat': result.get('new_beat'),
                 'raw_text': result.get('raw_text'),
                 'segments': result.get('segments')
             })
@@ -528,9 +528,9 @@ def update_entity_state_attribute(conn, entity_id, attribute_key, attribute_valu
         attributes = {attribute_key: attribute_value}
         
         conn.execute('''
-            INSERT INTO states (story_id, timeline_id, scene_id, node_id, entity_id, attributes)
+            INSERT INTO states (story_id, timeline_id, scene_id, beat_id, entity_id, attributes)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', ('1', '1:tl1', '1:s1', '1:n1', entity_id, json.dumps(attributes)))
+        ''', ('1', '1:tl1', '1:s1', '1:b3', entity_id, json.dumps(attributes)))
 
 def merge_class_attributes(conn, class_id):
     """Merge attributes from entire class inheritance chain"""
@@ -596,7 +596,7 @@ def get_relationships():
             JOIN states s2 ON r.state_id2 = s2.state_id
             JOIN entities e1 ON s1.entity_id = e1.entity_id
             JOIN entities e2 ON s2.entity_id = e2.entity_id
-            ORDER BY r.node_id, r.created_at
+            ORDER BY r.beat_id, r.created_at
         ''').fetchall()
         conn.close()
         return [dict(rel) for rel in relationships]

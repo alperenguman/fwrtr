@@ -1,17 +1,16 @@
 import json
 from typing import Dict, List, Any, Optional
 from base_agent import BaseAgent
-from node_utils import get_descendant_ids
 
 
 class PrepAgent(BaseAgent):
     """Prepares context and prompts for story generation"""
     
-    def execute(self, story_id: str, scene_id: str, node_id: str, 
+    def execute(self, story_id: str, scene_id: str, beat_id: str, 
                 user_input: str = "", prompt_entities: List[Dict] = None) -> Dict[str, Any]:
         """
         Queries entity relationships and states to prepare generation context:
-        1. Get all relationships in current node
+        1. Get all relationships in current beat
         2. Get all relationships in current scene  
         3. For entities mentioned in user prompt, get their full historical context
         4. Build hierarchical context summary for GeneratorAgent
@@ -23,25 +22,25 @@ class PrepAgent(BaseAgent):
         execution_id = self._start_execution(story_id, source_text=f"user_input: {user_input}")
         
         try:
-            # 1. Get relationships in current node (most immediate context)
-            node_relationships = self._get_node_relationships(story_id, node_id)
-
+            # 1. Get relationships in current beat (most immediate context)
+            beat_relationships = self._get_beat_relationships(story_id, scene_id, beat_id)
+            
             # 2. Get relationships in current scene (broader context)
-            scene_relationships = self._get_scene_relationships(story_id, scene_id, node_id)
+            scene_relationships = self._get_scene_relationships(story_id, scene_id, beat_id)
             
             # 3. For entities mentioned in prompt, get their full historical context
             prompt_entity_ids = [e['entity_id'] for e in (prompt_entities or [])]
             historical_relationships = self._get_historical_relationships(story_id, scene_id, prompt_entity_ids)
             
             # 4. Get all states for entities involved in relationships
-            entity_states = self._get_entity_states_for_context(story_id, scene_id, node_id)
+            entity_states = self._get_entity_states_for_context(story_id, scene_id, beat_id)
             
             # 5. Get detailed states for prompt entities across all scenes
             prompt_entity_states = self._get_prompt_entity_detailed_states(story_id, prompt_entity_ids)
             
             # 6. Build comprehensive context summary
             context_summary = self._build_context_summary(
-                node_relationships, scene_relationships, historical_relationships, 
+                beat_relationships, scene_relationships, historical_relationships, 
                 entity_states, prompt_entity_states, prompt_entities or []
             )
             
@@ -53,7 +52,7 @@ class PrepAgent(BaseAgent):
             return {
                 'success': True,
                 'prompt': prompt,
-                'node_relationships': len(node_relationships),
+                'beat_relationships': len(beat_relationships),
                 'scene_relationships': len(scene_relationships),
                 'historical_relationships': len(historical_relationships),
                 'prompt_entities': len(prompt_entities or []),
@@ -64,44 +63,40 @@ class PrepAgent(BaseAgent):
             self._finish_execution("", f"Error: {str(e)}")
             return {'success': False, 'error': str(e)}
     
-    def _get_node_relationships(self, story_id: str, node_id: str) -> List[Dict]:
-        """Get all relationships within the current node and its descendants"""
-        node_ids = get_descendant_ids(self.db, node_id)
-        placeholders = ','.join(['?' for _ in node_ids])
-        cursor = self.db.execute(f"""
-            SELECT r.*,
+    def _get_beat_relationships(self, story_id: str, scene_id: str, beat_id: str) -> List[Dict]:
+        """Get all relationships within the current beat"""
+        cursor = self.db.execute("""
+            SELECT r.*, 
                    e1.name as entity1_name, e1.base_type as entity1_type,
                    e2.name as entity2_name, e2.base_type as entity2_type,
                    s1.entity_id as entity1_id, s2.entity_id as entity2_id
             FROM relationships r
             JOIN states s1 ON r.state_id1 = s1.state_id
-            JOIN states s2 ON r.state_id2 = s2.state_id
+            JOIN states s2 ON r.state_id2 = s2.state_id  
             JOIN entities e1 ON s1.entity_id = e1.entity_id
             JOIN entities e2 ON s2.entity_id = e2.entity_id
-            WHERE r.story_id = ? AND r.node_id IN ({placeholders})
+            WHERE r.story_id = ? AND r.scene_id = ? AND r.beat_id = ?
             ORDER BY r.created_at DESC
-        """, [story_id] + node_ids)
-
+        """, (story_id, scene_id, beat_id))
+        
         return [dict(row) for row in cursor.fetchall()]
     
-    def _get_scene_relationships(self, story_id: str, scene_id: str, node_id: str) -> List[Dict]:
-        """Get all relationships within the current scene excluding the node's subtree"""
-        node_ids = get_descendant_ids(self.db, node_id)
-        placeholders = ','.join(['?' for _ in node_ids])
-        cursor = self.db.execute(f"""
-            SELECT r.*,
+    def _get_scene_relationships(self, story_id: str, scene_id: str, beat_id: str) -> List[Dict]:
+        """Get all relationships within the current scene (excluding current beat)"""
+        cursor = self.db.execute("""
+            SELECT r.*, 
                    e1.name as entity1_name, e1.base_type as entity1_type,
                    e2.name as entity2_name, e2.base_type as entity2_type,
                    s1.entity_id as entity1_id, s2.entity_id as entity2_id
             FROM relationships r
             JOIN states s1 ON r.state_id1 = s1.state_id
-            JOIN states s2 ON r.state_id2 = s2.state_id
+            JOIN states s2 ON r.state_id2 = s2.state_id  
             JOIN entities e1 ON s1.entity_id = e1.entity_id
             JOIN entities e2 ON s2.entity_id = e2.entity_id
-            WHERE r.story_id = ? AND r.scene_id = ? AND r.node_id NOT IN ({placeholders})
+            WHERE r.story_id = ? AND r.scene_id = ? AND r.beat_id != ?
             ORDER BY r.created_at DESC
-        """, [story_id, scene_id] + node_ids)
-
+        """, (story_id, scene_id, beat_id))
+        
         return [dict(row) for row in cursor.fetchall()]
     
     def _get_historical_relationships(self, story_id: str, current_scene_id: str, 
@@ -118,7 +113,7 @@ class PrepAgent(BaseAgent):
                    e2.name as entity2_name, e2.base_type as entity2_type,
                    s1.entity_id as entity1_id, s2.entity_id as entity2_id,
                    r.scene_id as historical_scene,
-                   r.node_id as historical_node
+                   r.beat_id as historical_beat
             FROM relationships r
             JOIN states s1 ON r.state_id1 = s1.state_id
             JOIN states s2 ON r.state_id2 = s2.state_id  
@@ -127,12 +122,12 @@ class PrepAgent(BaseAgent):
             WHERE r.story_id = ? 
             AND r.scene_id != ?
             AND (s1.entity_id IN ({placeholders}) OR s2.entity_id IN ({placeholders}))
-            ORDER BY r.scene_id DESC, r.node_id DESC, r.created_at DESC
+            ORDER BY r.scene_id DESC, r.beat_id DESC, r.created_at DESC
         """, [story_id, current_scene_id] + prompt_entity_ids + prompt_entity_ids)
         
         return [dict(row) for row in cursor.fetchall()]
     
-    def _get_entity_states_for_context(self, story_id: str, scene_id: str, node_id: str) -> List[Dict]:
+    def _get_entity_states_for_context(self, story_id: str, scene_id: str, beat_id: str) -> List[Dict]:
         """Get detailed entity states for all entities involved in current scene relationships"""
         cursor = self.db.execute("""
             SELECT DISTINCT e.*, s.*, 
@@ -172,16 +167,16 @@ class PrepAgent(BaseAgent):
                    s.current_history_description, s.current_history_description_detail,
                    s.attributes as current_attributes,
                    s.scene_id as state_scene,
-                   s.node_id as state_node
+                   s.beat_id as state_beat
             FROM entities e
             LEFT JOIN states s ON e.entity_id = s.entity_id AND s.story_id = ?
             WHERE e.entity_id IN ({placeholders})
-            ORDER BY e.entity_id, s.scene_id DESC, s.node_id DESC, s.created_at DESC
+            ORDER BY e.entity_id, s.scene_id DESC, s.beat_id DESC, s.created_at DESC
         """, [story_id] + prompt_entity_ids)
         
         return [dict(row) for row in cursor.fetchall()]
     
-    def _build_context_summary(self, node_relationships: List[Dict], scene_relationships: List[Dict],
+    def _build_context_summary(self, beat_relationships: List[Dict], scene_relationships: List[Dict],
                              historical_relationships: List[Dict], entity_states: List[Dict],
                              prompt_entity_states: List[Dict], prompt_entities: List[Dict]) -> Dict[str, Any]:
         """Build comprehensive context summary focusing on prompt entities"""
@@ -203,8 +198,8 @@ class PrepAgent(BaseAgent):
         
         context = {
             'immediate_context': {
-                'description': 'Current node relationships (highest priority)',
-                'relationships': node_relationships
+                'description': 'Current beat relationships (highest priority)',
+                'relationships': beat_relationships
             },
             'scene_context': {
                 'description': 'Current scene relationships (medium priority)', 
@@ -274,7 +269,7 @@ class PrepAgent(BaseAgent):
                 if state.get('state_scene'):
                     summary['state_evolution'].append({
                         'scene': state['state_scene'],
-                        'node': state['state_node'],
+                        'beat': state['state_beat'],
                         'changes': self._identify_state_changes(base_entity, state)
                     })
         
@@ -332,9 +327,9 @@ class PrepAgent(BaseAgent):
             "\nYou are generating the next part of an ongoing story. Use this context to maintain continuity and consistency.\n"
         ]
         
-        # Add immediate context (current node)
+        # Add immediate context (current beat)
         if context_summary['immediate_context']['relationships']:
-            prompt_parts.append("### IMMEDIATE CONTEXT (Current Node)")
+            prompt_parts.append("### IMMEDIATE CONTEXT (Current Beat)")
             prompt_parts.append("These relationships are active RIGHT NOW:")
             for rel in context_summary['immediate_context']['relationships']:
                 detail = f" - {rel['description_detail']}" if rel.get('description_detail') else ""
@@ -364,15 +359,15 @@ class PrepAgent(BaseAgent):
                     prompt_parts.append(f"  Recent changes:")
                     for evolution in entity['state_evolution'][:3]:
                         if evolution['changes']:
-                            prompt_parts.append(f"    {evolution['scene']}/{evolution['node']}: {'; '.join(evolution['changes'])}")
+                            prompt_parts.append(f"    {evolution['scene']}/{evolution['beat']}: {'; '.join(evolution['changes'])}")
         
         # Add historical relationships for prompt entities
         if context_summary['prompt_entities_context']['historical_relationships']:
             prompt_parts.append("\n### HISTORICAL CONTEXT FOR PROMPT ENTITIES")
             prompt_parts.append("Previous relationships involving mentioned entities:")
             for rel in context_summary['prompt_entities_context']['historical_relationships'][:10]:
-                scene_node = f"{rel['historical_scene']}/{rel['historical_node']}"
-                prompt_parts.append(f"• [{scene_node}] {rel['entity1_name']} {rel['description']} {rel['entity2_name']}")
+                scene_beat = f"{rel['historical_scene']}/{rel['historical_beat']}"
+                prompt_parts.append(f"• [{scene_beat}] {rel['entity1_name']} {rel['description']} {rel['entity2_name']}")
         
         # Add scene context
         if context_summary['scene_context']['relationships']:
