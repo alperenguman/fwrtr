@@ -2,12 +2,13 @@ import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from base_agent import BaseAgent
+from node_utils import get_descendant_ids
 
 
 class GeneratorAgent(BaseAgent):
     """Generates story content using context from PrepAgent or direct scene context"""
     
-    def execute(self, story_id: str, scene_id: str, beat_id: str,
+    def execute(self, story_id: str, scene_id: str, node_id: str,
                 user_input: str = "", context_prompt: str = "",
                 generation_mode: str = "immediate", stream_callback=None) -> Dict[str, Any]:
         """
@@ -22,9 +23,9 @@ class GeneratorAgent(BaseAgent):
         
         try:
             if generation_mode == "immediate":
-                result = self._immediate_generation(story_id, scene_id, beat_id, user_input, stream_callback)
+                result = self._immediate_generation(story_id, scene_id, node_id, user_input, stream_callback)
             elif generation_mode == "simulation":
-                result = self._simulation_generation(story_id, scene_id, beat_id, user_input, context_prompt, stream_callback)
+                result = self._simulation_generation(story_id, scene_id, node_id, user_input, context_prompt, stream_callback)
             else:
                 raise ValueError(f"Unknown generation mode: {generation_mode}")
             
@@ -32,7 +33,7 @@ class GeneratorAgent(BaseAgent):
                 raw_text = result.get('raw_text', result['generated_text'])
                 # Store the generated story (processed text may be updated later)
                 story_entry_id = self._store_story_entry(
-                    story_id, scene_id, beat_id,
+                story_id, scene_id, node_id,
                     raw_text,
                     raw_text,
                     generation_mode
@@ -53,14 +54,14 @@ class GeneratorAgent(BaseAgent):
             self._finish_execution("", f"Error: {str(e)}")
             return {'success': False, 'error': str(e)}
     
-    def _immediate_generation(self, story_id: str, scene_id: str, beat_id: str,
+    def _immediate_generation(self, story_id: str, scene_id: str, node_id: str,
                               user_input: str, stream_callback=None) -> Dict[str, Any]:
         """Quick generation with minimal context (red flash)"""
         print(f"[GeneratorAgent] Starting immediate generation")
         
         try:
             # Get basic scene context without heavy processing
-            scene_context = self._get_basic_scene_context(story_id, scene_id, beat_id)
+            scene_context = self._get_basic_scene_context(story_id, scene_id, node_id)
             
             # Build simple prompt
             prompt = self._build_immediate_prompt(scene_context, user_input)
@@ -99,7 +100,7 @@ class GeneratorAgent(BaseAgent):
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def _simulation_generation(self, story_id: str, scene_id: str, beat_id: str,
+    def _simulation_generation(self, story_id: str, scene_id: str, node_id: str,
                              user_input: str, context_prompt: str, stream_callback=None) -> Dict[str, Any]:
         """Full generation with PrepAgent context (yellow flash)"""
         print(f"[GeneratorAgent] Starting simulation generation")
@@ -146,7 +147,7 @@ class GeneratorAgent(BaseAgent):
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def _get_basic_scene_context(self, story_id: str, scene_id: str, beat_id: str) -> Dict[str, Any]:
+    def _get_basic_scene_context(self, story_id: str, scene_id: str, node_id: str) -> Dict[str, Any]:
         """Get minimal scene context for immediate generation"""
         
         # Get entities in current scene
@@ -159,24 +160,26 @@ class GeneratorAgent(BaseAgent):
             ORDER BY e.base_type, e.name
         """, (story_id, scene_id)).fetchall()
         
-        # Get recent relationships in this beat/scene
-        relationships = self.db.execute("""
+        # Get recent relationships in this node/scene
+        node_ids = get_descendant_ids(self.db, node_id)
+        placeholders = ",".join(["?" for _ in node_ids])
+        relationships = self.db.execute(f"""
             SELECT r.description, e1.name as entity1_name, e2.name as entity2_name
             FROM relationships r
             JOIN states s1 ON r.state_id1 = s1.state_id
             JOIN states s2 ON r.state_id2 = s2.state_id
             JOIN entities e1 ON s1.entity_id = e1.entity_id
             JOIN entities e2 ON s2.entity_id = e2.entity_id
-            WHERE r.story_id = ? AND r.scene_id = ?
-            ORDER BY r.beat_id DESC, r.created_at DESC
+            WHERE r.story_id = ? AND r.node_id IN ({placeholders})
+            ORDER BY r.created_at DESC
             LIMIT 10
-        """, (story_id, scene_id)).fetchall()
+        """, [story_id] + node_ids).fetchall()
         
         return {
             'entities': [dict(row) for row in entities],
             'relationships': [dict(row) for row in relationships],
             'scene_id': scene_id,
-            'beat_id': beat_id
+            'node_id': node_id
         }
     
     def _build_immediate_prompt(self, scene_context: Dict, user_input: str) -> str:
@@ -184,7 +187,7 @@ class GeneratorAgent(BaseAgent):
         prompt_parts = [
             self.config['instructions'],
             "\n## SCENE CONTEXT",
-            f"Scene: {scene_context['scene_id']}, Beat: {scene_context['beat_id']}"
+            f"Scene: {scene_context['scene_id']}, Node: {scene_context['node_id']}"
         ]
         
         # Add entities present
@@ -241,7 +244,7 @@ class GeneratorAgent(BaseAgent):
         else:
             return "The story progresses naturally, building on the established context and character relationships."
     
-    def _store_story_entry(self, story_id: str, scene_id: str, beat_id: str,
+    def _store_story_entry(self, story_id: str, scene_id: str, node_id: str,
                           raw_text: str, processed_text: str,
                           generation_mode: str) -> int:
         """Store generated story in database with raw and processed text"""
@@ -252,10 +255,10 @@ class GeneratorAgent(BaseAgent):
         # Insert story entry
         cursor = self.db.execute("""
             INSERT INTO stories
-            (story_id, timeline_id, scene_id, beat_id, raw_text, text_content, variant, revision, character_count)
+            (story_id, timeline_id, scene_id, node_id, raw_text, text_content, variant, revision, character_count)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            story_id, '1:tl1', scene_id, beat_id,
+            story_id, '1:tl1', scene_id, node_id,
             raw_text, processed_text, variant, 'rev1', len(processed_text)
         ))
         

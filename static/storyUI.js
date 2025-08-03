@@ -1,5 +1,5 @@
 // Story UI Management
-// Handles chat messages, story display, scene/beat observers, and generation with streaming
+// Handles chat messages, story display, scene/node observers, and generation with streaming
 
 // Scroll observer for scene tracking
 let sceneObserver;
@@ -9,21 +9,21 @@ let showSystemMessages = true;
 let showUserMessages = true;
 let autoEval = true;
 let sceneCounter = 1;
-const beatCounters = { '1:s1': 1 };
+const nodeCounters = { '1:s1': 1 };
 
 function generateNextSceneId() {
     sceneCounter += 1;
     const id = '1:s' + sceneCounter;
-    beatCounters[id] = 0;
+    nodeCounters[id] = 0;
     return id;
 }
 
-function generateNextBeatId(sceneId = window.leftPane.getCurrentScene() || '1:s1') {
-    if (!beatCounters[sceneId]) {
-        beatCounters[sceneId] = 0;
+function generateNextNodeId(sceneId = window.leftPane.getCurrentScene() || '1:s1') {
+    if (!nodeCounters[sceneId]) {
+        nodeCounters[sceneId] = 0;
     }
-    beatCounters[sceneId] += 1;
-    return '1:b' + beatCounters[sceneId];
+    nodeCounters[sceneId] += 1;
+    return '1:n' + nodeCounters[sceneId];
 }
 
 function initializeSceneObserver() {
@@ -120,7 +120,7 @@ function formatTextIntoParagraphs(text) {
     return paragraphs.map(para => '<p>' + processEntityLinks(para) + '</p>').join('');
 }
 
-function startStreamingMessage(generationMode, sceneId, beatId) {
+function startStreamingMessage(generationMode, sceneId, nodeId) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message ai streaming raw-output';
@@ -129,16 +129,16 @@ function startStreamingMessage(generationMode, sceneId, beatId) {
     sceneDiv.className = 'scene-boundary';
     sceneDiv.dataset.sceneId = sceneId;
 
-    const beatDiv = document.createElement('div');
-    beatDiv.className = 'beat-boundary';
-    beatDiv.dataset.beatId = beatId;
+    const nodeDiv = document.createElement('div');
+    nodeDiv.className = 'node-boundary';
+    nodeDiv.dataset.nodeId = nodeId;
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'generation-content streaming-content';
     contentDiv.innerHTML = '<div class="streaming-cursor">▊</div>';
 
-    beatDiv.appendChild(contentDiv);
-    sceneDiv.appendChild(beatDiv);
+    nodeDiv.appendChild(contentDiv);
+    sceneDiv.appendChild(nodeDiv);
     messageDiv.appendChild(sceneDiv);
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -212,29 +212,29 @@ function finishStreamingMessage() {
     }, 100);
 }
 
-function addGeneratedStory(content, generationMode, sceneId, beatId, rawText, storyEntryId) {
+function addGeneratedStory(content, generationMode, sceneId, nodeId, rawText, storyEntryId) {
     const chatMessages = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message ai';
 
     sceneId = sceneId || window.leftPane.getCurrentScene() || '1:s1';
-    beatId = beatId || generateNextBeatId(sceneId);
+    nodeId = nodeId || generateNextNodeId(sceneId);
 
     const sceneDiv = document.createElement('div');
     sceneDiv.className = 'scene-boundary';
     sceneDiv.dataset.sceneId = sceneId;
 
-    const beatDiv = document.createElement('div');
-    beatDiv.className = 'beat-boundary';
-    beatDiv.dataset.beatId = beatId;
+    const nodeDiv = document.createElement('div');
+    nodeDiv.className = 'node-boundary';
+    nodeDiv.dataset.nodeId = nodeId;
 
     const formattedContent = formatTextIntoParagraphs(content);
     const contentDiv = document.createElement('div');
     contentDiv.className = 'generation-content';
     contentDiv.innerHTML = formattedContent;
 
-    beatDiv.appendChild(contentDiv);
-    sceneDiv.appendChild(beatDiv);
+    nodeDiv.appendChild(contentDiv);
+    sceneDiv.appendChild(nodeDiv);
     messageDiv.appendChild(sceneDiv);
     if (storyEntryId) {
         messageDiv.dataset.storyEntryId = storyEntryId;
@@ -295,21 +295,21 @@ function applyEvaluationResult(messageEl, data) {
         messageEl.dataset.rawText = data.raw_text;
     }
     if (data.processed_text) {
-        const segments = data.segments || [{ text: data.processed_text, new_scene: data.new_scene, new_beat: data.new_beat }];
+        const segments = data.segments || [{ text: data.processed_text, new_scene: data.new_scene, new_node: data.new_node }];
 
         let sceneDiv = messageEl.querySelector('.scene-boundary');
-        let beatDiv = sceneDiv.querySelector('.beat-boundary');
-        const contentDiv = beatDiv.querySelector('.generation-content');
+        let nodeDiv = sceneDiv.querySelector('.node-boundary');
+        const contentDiv = nodeDiv.querySelector('.generation-content');
 
         let startIndex = 0;
 
-        if (!data.new_scene && !data.new_beat) {
+        if (!data.new_scene && !data.new_node) {
             const prevMessage = messageEl.previousElementSibling;
             if (prevMessage && prevMessage.classList.contains('message')) {
-                const prevBeats = prevMessage.querySelectorAll('.beat-boundary');
-                const lastBeat = prevBeats[prevBeats.length - 1];
-                if (lastBeat) {
-                    const prevContent = lastBeat.querySelector('.generation-content');
+                const prevNodes = prevMessage.querySelectorAll('.node-boundary');
+                const lastNode = prevNodes[prevNodes.length - 1];
+                if (lastNode) {
+                    const prevContent = lastNode.querySelector('.generation-content');
                     prevContent.innerHTML += formatTextIntoParagraphs(segments[0].text);
                     startIndex = 1;
                 }
@@ -332,27 +332,27 @@ function applyEvaluationResult(messageEl, data) {
                 const newScene = document.createElement('div');
                 newScene.className = 'scene-boundary';
                 newScene.dataset.sceneId = newSceneId;
-                const newBeatId = generateNextBeatId(newSceneId);
-                const newBeat = document.createElement('div');
-                newBeat.className = 'beat-boundary';
-                newBeat.dataset.beatId = newBeatId;
+                const newNodeId = generateNextNodeId(newSceneId);
+                const newNode = document.createElement('div');
+                newNode.className = 'node-boundary';
+                newNode.dataset.nodeId = newNodeId;
                 const c = document.createElement('div');
                 c.className = 'generation-content';
                 c.innerHTML = formatTextIntoParagraphs(seg.text);
-                newBeat.appendChild(c);
-                newScene.appendChild(newBeat);
+                newNode.appendChild(c);
+                newScene.appendChild(newNode);
                 sceneDiv.parentNode.insertBefore(newScene, sceneDiv.nextSibling);
                 sceneDiv = newScene;
             } else {
-                const newBeat = document.createElement('div');
-                newBeat.className = 'beat-boundary';
-                const newBeatId = generateNextBeatId(sceneDiv.dataset.sceneId);
-                newBeat.dataset.beatId = newBeatId;
+                const newNode = document.createElement('div');
+                newNode.className = 'node-boundary';
+                const newNodeId = generateNextNodeId(sceneDiv.dataset.sceneId);
+                newNode.dataset.nodeId = newNodeId;
                 const c = document.createElement('div');
                 c.className = 'generation-content';
                 c.innerHTML = formatTextIntoParagraphs(seg.text);
-                newBeat.appendChild(c);
-                sceneDiv.appendChild(newBeat);
+                newNode.appendChild(c);
+                sceneDiv.appendChild(newNode);
             }
         }
     }
@@ -394,7 +394,7 @@ function generateInitialStory() {
     }
     
     let content = '<div class="scene-boundary" data-scene-id="1:s1">';
-    content += '<div class="beat-boundary" data-beat-id="1:b1">';
+    content += '<div class="node-boundary" data-node-id="1:n1">';
     content += '<p><strong>Welcome to your story!</strong> The scene is set with:</p>';
     
     const sarah = entities.find(function(e) { return e.base_type === 'actor' && e.name.includes('Sarah'); });
@@ -425,7 +425,7 @@ function generateInitialStory() {
         observeSceneBoundaries();
         window.leftPane.updateSceneInfo(window.leftPane.getCurrentScene());
         sceneCounter = 1;
-        beatCounters['1:s1'] = 1;
+        nodeCounters['1:s1'] = 1;
     }, 100);
 }
 
@@ -447,12 +447,12 @@ function handleImmediateGeneration(userInput) {
         content: userInput,
         story_id: '1',
         scene_id: window.leftPane.getCurrentScene() || '1:s1',
-        beat_id: generateNextBeatId(window.leftPane.getCurrentScene() || '1:s1'),
+        node_id: generateNextNodeId(window.leftPane.getCurrentScene() || '1:s1'),
         skip_eval: !autoEval
     };
 
     // Start streaming message
-    startStreamingMessage('immediate', requestData.scene_id, requestData.beat_id);
+    startStreamingMessage('immediate', requestData.scene_id, requestData.node_id);
     
     console.log('Sending generate_immediate request:', requestData);
     
@@ -476,11 +476,11 @@ function handleChatGeneration(userInput) {
         content: userInput,
         story_id: '1',
         scene_id: window.leftPane.getCurrentScene() || '1:s1',
-        beat_id: generateNextBeatId(window.leftPane.getCurrentScene() || '1:s1'),
+        node_id: generateNextNodeId(window.leftPane.getCurrentScene() || '1:s1'),
         skip_eval: !autoEval
     };
 
-    startStreamingMessage('chat', requestData.scene_id, requestData.beat_id);
+    startStreamingMessage('chat', requestData.scene_id, requestData.node_id);
 
     console.log('Sending user_message request:', requestData);
     window.socket.emit('user_message', requestData);
@@ -688,7 +688,7 @@ function setupInputHandlers() {
     });
 }
 
-// Click handlers for entities, scenes, and beats
+// Click handlers for entities, scenes, and nodes
 function setupClickHandlers() {
     document.addEventListener('click', function(e) {
         if (e.target.classList.contains('toggle-btn')) {
@@ -713,10 +713,10 @@ function setupClickHandlers() {
             return;
         }
         
-        if (e.target.classList.contains('beat-boundary')) {
-            const beatId = e.target.dataset.beatId;
-            if (beatId) {
-                window.entityDetails.showBeatDetails(beatId);
+        if (e.target.classList.contains('node-boundary')) {
+            const nodeId = e.target.dataset.nodeId;
+            if (nodeId) {
+                window.entityDetails.showNodeDetails(nodeId);
             }
             e.stopPropagation();
             return;
@@ -780,7 +780,7 @@ window.storyUI = {
     generateInitialStory: generateInitialStory,
     handleImmediateGeneration: handleImmediateGeneration,
     handleChatGeneration: handleChatGeneration,
-    generateNextBeatId: generateNextBeatId,
+    generateNextNodeId: generateNextNodeId,
     generateNextSceneId: generateNextSceneId,
     handleGenerationStream: handleGenerationStream,
     handleGenerationComplete: handleGenerationComplete,
