@@ -4,10 +4,10 @@ from typing import Dict, Any, List
 from base_agent import BaseAgent
 
 class EvalAgent(BaseAgent):
-    """Evaluates raw generation output and determines scene/beat boundaries."""
+    """Evaluates raw generation output and determines scene/node boundaries."""
 
-    def execute(self, story_id: str, scene_id: str, beat_id: str, text: str) -> Dict[str, Any]:
-        """Evaluate raw text and determine beat/scene boundaries."""
+    def execute(self, story_id: str, scene_id: str, node_id: str, text: str) -> Dict[str, Any]:
+        """Evaluate raw text and determine node/scene boundaries."""
         execution_id = self._start_execution(story_id, source_text=text)
         try:
             prompt = f"{self.config['instructions']}\n\n{text}"
@@ -24,7 +24,7 @@ class EvalAgent(BaseAgent):
                     "processed_text": processed,
                     "segments": segments,
                     "new_scene": segments[0]["new_scene"] if segments else False,
-                    "new_beat": len(segments) > 1
+                    "new_node": len(segments) > 1
                 })
 
             messages = [{"role": "user", "content": prompt}]
@@ -39,12 +39,12 @@ class EvalAgent(BaseAgent):
                 data = json.loads(result)
                 processed_text = data.get("processed_text", text)
                 new_scene = bool(data.get("new_scene"))
-                new_beat = bool(data.get("new_beat"))
+                new_node = bool(data.get("new_node"))
                 segments = data.get("segments")
             except Exception:
                 processed_text = text
                 new_scene = False
-                new_beat = False
+                new_node = False
                 segments = None
 
             self._finish_execution(result, "Evaluation complete", getattr(self, "_current_tokens", 0))
@@ -52,7 +52,7 @@ class EvalAgent(BaseAgent):
                 "success": True,
                 "processed_text": processed_text,
                 "new_scene": new_scene,
-                "new_beat": new_beat,
+                "new_node": new_node,
                 "segments": segments,
             }
         except Exception as e:

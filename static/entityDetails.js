@@ -80,9 +80,9 @@ function showSceneDetails(sceneId) {
     document.getElementById('detailPane').classList.add('active');
 }
 
-function showBeatDetails(beatId) {
-    document.getElementById('detailTitle').textContent = 'Beat Details';
-    document.getElementById('detailContent').innerHTML = '<div class="detail-section"><h3>Beat ID</h3><p>' + beatId + '</p><p>This is the beat context. In a full implementation, this would show beat-specific information like dramatic purpose, emotional arc, and story progression.</p></div>';
+function showNodeDetails(nodeId) {
+    document.getElementById('detailTitle').textContent = 'Node Details';
+    document.getElementById('detailContent').innerHTML = '<div class="detail-section"><h3>Node ID</h3><p>' + nodeId + '</p><p>This is the node context. In a full implementation, this would show node-specific information like dramatic purpose, emotional arc, and story progression.</p></div>';
     document.getElementById('detailPane').classList.add('active');
 }
 
@@ -306,7 +306,7 @@ window.entityDetails = {
     sectionOrder,
     showEntityDetails,
     showSceneDetails,
-    showBeatDetails,
+    showNodeDetails,
     closeDetailPane,
     toggleSection,
     initializeDragAndDrop,
