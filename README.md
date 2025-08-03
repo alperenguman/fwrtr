@@ -24,33 +24,33 @@ Weights system to determine what makes it into the finite input context space. A
 
 ## Representations
 Audio/Visual representations of entities, states, relationships.
+Real world to story entity imports are possible using representations.
 
-## Inspirations
-Real world to story entity imports.
+## Story Nodes
+Smallest unit of story in recursive hierarchy, fractal structure. If it advances the plot can be labeled a beat.
 
 ## Agents
-
 Agents have clearly defined tasks and store their main prompts in the database, they're subject to revision by the SystemAgent as they adapt to evolving needs of the system.
 
-### PrepAgent
+* PrepAgent
 
-### GeneratorAgent
-Raw generator of text.
+* GeneratorAgent
+	Raw generator of text.
 
-### EntityAgent
-Identifies entities in a bound area of text. Creates and manages entity state and relationships.
+* EntityAgent
+	Identifies entities in a bound area of text. Creates and manages entity state and relationships.
 
-### ContinuityGuard
-Preserves continuity of entities across story.
+* ContinuityGuard
+	Preserves continuity of entities across story.
 
-### EvalAgent
-Evaluates the output, manages story/beat classification and performs assesment of faitfulness to intent/quality.
+* EvalAgent
+	Evaluates the output, manages story/beat classification and performs assesment of faitfulness to intent/quality.
 
-### SystemAgent
-Observes and revises the main prompts of other agents, enters them into the database as new versions, as needed. Orchestrator.
+* SystemAgent
+	Observes and revises the main prompts of other agents, enters them into the database as new versions, as needed. Orchestrator.
 
-### PerceptionAgent
+* PerceptionAgent
 
-### AwarenessAgent
+* AwarenessAgent
 
-### RepresentationAgent
+* RepresentationAgent
