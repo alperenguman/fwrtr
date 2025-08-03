@@ -27,7 +27,7 @@ Audio/Visual representations of entities, states, relationships.
 Real world to story entity imports are possible using representations.
 
 ## Story Nodes
-Smallest unit of story in recursive hierarchy, fractal structure. Each node can advance the plot or contain nested child nodes.
+Smallest unit of story in recursive hierarchy, fractal structure. If it advances the plot can be labeled a beat.
 
 ## Agents
 Agents have clearly defined tasks and store their main prompts in the database, they're subject to revision by the SystemAgent as they adapt to evolving needs of the system.
@@ -44,9 +44,9 @@ Agents have clearly defined tasks and store their main prompts in the database, 
 	- Preserves continuity of entities across story.
 
 - EvalAgent
-        - Evaluates the output
-        - Manages story/node classification
-        - Performs assesment of faitfulness to intent/quality
+	- Evaluates the output 
+	- Manages story/beat classification 
+	- Performs assesment of faitfulness to intent/quality
 
 - SystemAgent
 	- Observes and revises the main prompts of other agents 

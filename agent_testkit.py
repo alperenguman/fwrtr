@@ -230,7 +230,7 @@ Be conservative - only include entities that are clearly present or referenced.'
             raise
     
     def test_prep_agent(self, user_input: str = "", story_id: str = "1", 
-                       scene_id: str = "1:s1", node_id: str = "1:n1"):
+                       scene_id: str = "1:s1", beat_id: str = "1:b3"):
         """Test PrepAgent"""
         print("=" * 60)
         print(f"TESTING PREP AGENT")
@@ -244,7 +244,7 @@ Be conservative - only include entities that are clearly present or referenced.'
                 entity_agent = self.get_agent('entity')
                 entity_result = entity_agent.execute(
                     story_text=user_input,
-                    story_context={'story_id': story_id, 'scene_id': scene_id, 'node_id': node_id, 'timeline_id': '1:tl1'},
+                    story_context={'story_id': story_id, 'scene_id': scene_id, 'beat_id': beat_id, 'timeline_id': '1:tl1'},
                     extract_only=True
                 )
                 if entity_result['success']:
@@ -254,12 +254,12 @@ Be conservative - only include entities that are clearly present or referenced.'
             # Run PrepAgent
             agent = self.get_agent('prep')
             result = agent.execute(
-                story_id=story_id, scene_id=scene_id, node_id=node_id,
+                story_id=story_id, scene_id=scene_id, beat_id=beat_id,
                 user_input=user_input, prompt_entities=prompt_entities
             )
             
             if result['success']:
-                print(f"✓ Success - Found {result['node_relationships']} node rels, {result['scene_relationships']} scene rels")
+                print(f"✓ Success - Found {result['beat_relationships']} beat rels, {result['scene_relationships']} scene rels")
                 print("\nGENERATED PROMPT:")
                 print("-" * 60)
                 print(result['prompt'])
@@ -311,7 +311,7 @@ Be conservative - only include entities that are clearly present or referenced.'
                     agent1 = self.get_agent('entity', 1)
                     task1_result = agent1.execute(
                         story_text=story_text,
-                        story_context={'story_id': story_id, 'scene_id': 'test:s1', 'node_id': 'test:n1', 'timeline_id': 'test:tl1'},
+                        story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
                         extract_only=True
                     )
                     
@@ -339,7 +339,7 @@ Be conservative - only include entities that are clearly present or referenced.'
                 agent = self.get_agent('entity', task_id)
                 result = agent.execute(
                     story_text=story_text,
-                    story_context={'story_id': story_id, 'scene_id': 'test:s1', 'node_id': 'test:n1', 'timeline_id': 'test:tl1'},
+                    story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
                     extract_only=True,
                     entity_names=entity_names  # Pass the entity names
                 )
@@ -352,7 +352,7 @@ Be conservative - only include entities that are clearly present or referenced.'
                 
                 result = agent.execute(
                     story_text=story_text,
-                    story_context={'story_id': story_id, 'scene_id': 'test:s1', 'node_id': 'test:n1', 'timeline_id': 'test:tl1'},
+                    story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
                     extract_only=True
                 )
             
@@ -411,7 +411,7 @@ Be conservative - only include entities that are clearly present or referenced.'
             agent1 = self.get_agent('entity', 1)
             task1_result = agent1.execute(
                 story_text=story_text,
-                story_context={'story_id': story_id, 'scene_id': 'test:s1', 'node_id': 'test:n1', 'timeline_id': 'test:tl1'},
+                story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
                 extract_only=True
             )
             
@@ -432,7 +432,7 @@ Be conservative - only include entities that are clearly present or referenced.'
             agent2 = self.get_agent('entity', 2)
             task2_result = agent2.execute(
                 story_text=story_text,
-                story_context={'story_id': story_id, 'scene_id': 'test:s1', 'node_id': 'test:n1', 'timeline_id': 'test:tl1'},
+                story_context={'story_id': story_id, 'scene_id': 'test:s1', 'beat_id': 'test:b1', 'timeline_id': 'test:tl1'},
                 extract_only=True,
                 entity_names=entity_names
             )

@@ -59,28 +59,9 @@ CREATE TABLE entity_aliases (
     alias_type TEXT DEFAULT 'manual', -- 'manual', 'auto_generated', 'nickname', 'title', etc.
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (entity_id) REFERENCES entities(entity_id),
+    FOREIGN KEY (entity_id) REFERENCES entities(entity_id) ON DELETE CASCADE,
     UNIQUE(entity_id, alias_name) -- Prevent duplicate aliases for same entity
 );
-
--- Nodes table for hierarchical structure
-CREATE TABLE nodes (
-    node_id TEXT PRIMARY KEY,
-    story_id TEXT NOT NULL,
-    scene_id TEXT NOT NULL,
-    parent_node_id TEXT,
-    title TEXT,
-    content TEXT,
-    position INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (parent_node_id) REFERENCES nodes(node_id)
-);
-
-CREATE INDEX idx_nodes_story ON nodes(story_id);
-CREATE INDEX idx_nodes_scene ON nodes(scene_id);
-CREATE INDEX idx_nodes_parent ON nodes(parent_node_id);
-CREATE INDEX idx_nodes_position ON nodes(position);
 
 -- Create states table for tracking contextual state changes
 CREATE TABLE states (
@@ -88,7 +69,7 @@ CREATE TABLE states (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    node_id TEXT NOT NULL,
+    beat_id TEXT NOT NULL,
     
     -- Single entity reference - much cleaner!
     entity_id INTEGER NOT NULL,
@@ -119,8 +100,7 @@ CREATE TABLE states (
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (entity_id) REFERENCES entities(entity_id),
-    FOREIGN KEY (node_id) REFERENCES nodes(node_id)
+    FOREIGN KEY (entity_id) REFERENCES entities(entity_id)
 );
 
 -- Simplified relationships table with only state references
@@ -129,7 +109,7 @@ CREATE TABLE relationships (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    node_id TEXT NOT NULL,
+    beat_id TEXT NOT NULL,
     state_id1 INTEGER NOT NULL,
     state_id2 INTEGER NOT NULL,
     description TEXT, -- LLM-generated description of how the states relate
@@ -146,7 +126,7 @@ CREATE TABLE perceptions (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    node_id TEXT NOT NULL,
+    beat_id TEXT NOT NULL,
     
     -- WHO is perceiving: a state perceiving another state
     perceiver_state_id INTEGER NOT NULL, -- The state doing the perceiving
@@ -199,7 +179,7 @@ CREATE TABLE awareness (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    node_id TEXT NOT NULL,
+    beat_id TEXT NOT NULL,
     
     -- CONTEXT REFERENCE - exactly one of these will be non-null
     state_id INTEGER, -- Reference to a state that's in awareness
@@ -284,7 +264,7 @@ CREATE TABLE stories (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    node_id TEXT NOT NULL,
+    beat_id TEXT NOT NULL,
     
     -- Story content and metadata
     raw_text TEXT NOT NULL, -- Raw generated text before any processing
@@ -379,13 +359,13 @@ CREATE INDEX idx_entity_aliases_type ON entity_aliases(alias_type);
 
 CREATE INDEX idx_states_story ON states(story_id);
 CREATE INDEX idx_states_scene ON states(scene_id);
-CREATE INDEX idx_states_node ON states(node_id);
+CREATE INDEX idx_states_beat ON states(beat_id);
 CREATE INDEX idx_states_entity ON states(entity_id);
 CREATE INDEX idx_states_attributes ON states(attributes);
 
 CREATE INDEX idx_relationships_story ON relationships(story_id);
 CREATE INDEX idx_relationships_scene ON relationships(scene_id);
-CREATE INDEX idx_relationships_node ON relationships(node_id);
+CREATE INDEX idx_relationships_beat ON relationships(beat_id);
 CREATE INDEX idx_relationships_state1 ON relationships(state_id1);
 CREATE INDEX idx_relationships_state2 ON relationships(state_id2);
 CREATE INDEX idx_relationships_description ON relationships(description);
@@ -393,7 +373,7 @@ CREATE INDEX idx_relationships_description ON relationships(description);
 -- Indexes for perceptions table
 CREATE INDEX idx_perceptions_story ON perceptions(story_id);
 CREATE INDEX idx_perceptions_scene ON perceptions(scene_id);
-CREATE INDEX idx_perceptions_node ON perceptions(node_id);
+CREATE INDEX idx_perceptions_beat ON perceptions(beat_id);
 CREATE INDEX idx_perceptions_perceiver_state ON perceptions(perceiver_state_id);
 CREATE INDEX idx_perceptions_perceived_state ON perceptions(perceived_state_id);
 CREATE INDEX idx_perceptions_confidence ON perceptions(confidence_level);
@@ -404,7 +384,7 @@ CREATE INDEX idx_perceptions_created ON perceptions(created_at);
 -- NEW: Indexes for awareness table - critical for performance
 CREATE INDEX idx_awareness_story ON awareness(story_id);
 CREATE INDEX idx_awareness_scene ON awareness(scene_id);
-CREATE INDEX idx_awareness_node ON awareness(node_id);
+CREATE INDEX idx_awareness_beat ON awareness(beat_id);
 CREATE INDEX idx_awareness_weight ON awareness(weight);
 CREATE INDEX idx_awareness_status ON awareness(status);
 CREATE INDEX idx_awareness_context_type ON awareness(context_type);
@@ -423,7 +403,7 @@ CREATE INDEX idx_representations_type ON representations(type);
 -- Indexes for stories table
 CREATE INDEX idx_stories_story_id ON stories(story_id);
 CREATE INDEX idx_stories_scene ON stories(scene_id);
-CREATE INDEX idx_stories_node ON stories(node_id);
+CREATE INDEX idx_stories_beat ON stories(beat_id);
 CREATE INDEX idx_stories_variant ON stories(variant);
 CREATE INDEX idx_stories_revision ON stories(revision);
 CREATE INDEX idx_stories_status ON stories(status);
@@ -499,9 +479,9 @@ INSERT INTO agents (agent_type, agent_task_id, agent_name, agent_description, ag
 VALUES (
     'EvalAgent',
     1,
-    'Node/Scene Evaluator',
-    'Determines if new text starts a new node or scene and returns processed text broken into segments.',
-    'Given raw story text, break it into logical segments representing nodes. Indicate if any segment starts a new scene. Respond with JSON: {"processed_text":"text","segments":[{"text":"segment","new_scene":false}]}.',
+    'Beat/Scene Evaluator',
+    'Determines if new text starts a new beat or scene and returns processed text broken into segments.',
+    'Given raw story text, break it into logical segments representing beats. Indicate if any segment starts a new scene. Respond with JSON: {"processed_text":"text","segments":[{"text":"segment","new_scene":false}]}.',
     '{}',
     'gpt-3.5-turbo',
     1

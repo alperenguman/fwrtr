@@ -1,5 +1,5 @@
 /* Story UI Styles */
-/* Handles chat messages, story display, scene/node observers, and generation effects */
+/* Handles chat messages, story display, scene/beat observers, and generation effects */
 
 .chat-container {
     flex: 1;
@@ -254,7 +254,7 @@ body.flash-green {
     51%, 100% { opacity: 0; }
 }
 
-/* Scene and Node Boundaries */
+/* Scene and Beat Boundaries */
 .scene-boundary {
     margin: 15px 0;
     padding: 15px;
@@ -269,7 +269,7 @@ body.flash-green {
     background: #222222;
 }
 
-.node-boundary {
+.beat-boundary {
     padding: 8px 0;
     margin: 5px 0;
     position: relative;
@@ -278,7 +278,7 @@ body.flash-green {
     border-radius: 3px;
 }
 
-.node-boundary:hover {
+.beat-boundary:hover {
     background: rgba(255, 255, 255, 0.03);
 }
 
@@ -489,7 +489,7 @@ body.flash-green {
     color: #ffff6b;
 }
 
-/* Scene and Node Boundaries */
+/* Scene and Beat Boundaries */
 .scene-boundary {
     margin: 15px 0;
     padding: 15px;
@@ -504,7 +504,7 @@ body.flash-green {
     background: #222222;
 }
 
-.node-boundary {
+.beat-boundary {
     padding: 8px 0;
     margin: 5px 0;
     position: relative;
@@ -513,7 +513,7 @@ body.flash-green {
     border-radius: 3px;
 }
 
-.node-boundary:hover {
+.beat-boundary:hover {
     background: rgba(255, 255, 255, 0.03);
 }
 
