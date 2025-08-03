@@ -657,3 +657,37 @@ body.flash-green {
     scrollbar-width: thin;
     scrollbar-color: #333 #0a0a0a;
 }
+
+/* Story Node Tree Demo */
+.node-tree {
+    background: #0d0d0d;
+    border-top: 1px solid #333;
+    border-bottom: 1px solid #333;
+    padding: 10px 20px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.node-list {
+    list-style: none;
+    margin-left: 20px;
+    padding-left: 0;
+    min-height: 5px;
+}
+
+.node-item {
+    background: #1a1a1a;
+    margin: 4px 0;
+    padding: 6px 8px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    cursor: grab;
+}
+
+.node-item:hover {
+    background: #222;
+}
+
+.sortable-ghost {
+    opacity: 0.4;
+}

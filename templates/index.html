@@ -54,12 +54,16 @@
                         <button class="editor-btn cancel-btn" id="cancelEntityBtn">Cancel</button>
                     </div>
                 </div>
-                
+
                 <div class="editor-content" id="editorContent">
                     <!-- Editor cards will be inserted here -->
                 </div>
             </div>
-            
+
+            <div class="node-tree" id="nodeTree">
+                <!-- Demo story nodes will be rendered here -->
+            </div>
+
             <div class="chat-input">
                 <div class="input-container">
                     <input type="text" id="messageInput" placeholder="Continue the story or ask about entities..." disabled>
@@ -104,6 +108,7 @@
     <script src="{{ url_for('static', filename='entityDetails.js') }}"></script>
     <script src="{{ url_for('static', filename='entityEditor.js') }}"></script>
     <script src="{{ url_for('static', filename='storyUI.js') }}"></script>
+    <script src="{{ url_for('static', filename='nodeTree.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
