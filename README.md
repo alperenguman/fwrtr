@@ -34,8 +34,8 @@ Agents have clearly defined tasks and store their main prompts in the database, 
 
 * PrepAgent
 
-* GeneratorAgent
-Raw generator of text.
+- GeneratorAgent
+	- Raw generator of text.
 
 - EntityAgent
 	- Identifies entities in a bound area of text. Creates and manages entity state and relationships.
@@ -44,10 +44,14 @@ Raw generator of text.
 	- Preserves continuity of entities across story.
 
 - EvalAgent
-	- Evaluates the output, manages story/beat classification and performs assesment of faitfulness to intent/quality.
+	- Evaluates the output 
+	- Manages story/beat classification 
+	- Performs assesment of faitfulness to intent/quality
 
 - SystemAgent
-	- Observes and revises the main prompts of other agents, enters them into the database as new versions, as needed. Orchestrator.
+	- Observes and revises the main prompts of other agents 
+	- Enters them into the database as new versions, as needed. 
+	- Orchestrator of systems
 
 - PerceptionAgent
 
