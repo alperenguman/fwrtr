@@ -74,15 +74,11 @@ function showEntityDetails(entityId) {
     initializeDragAndDrop(entityId);
 }
 
-function showSceneDetails(sceneId) {
-    document.getElementById('detailTitle').textContent = 'Scene Details';
-    document.getElementById('detailContent').innerHTML = '<div class="detail-section"><h3>Scene ID</h3><p>' + sceneId + '</p><p>This is the scene context. In a full implementation, this would show scene-specific information like setting, mood, participants, and narrative goals.</p></div>';
-    document.getElementById('detailPane').classList.add('active');
-}
-
-function showBeatDetails(beatId) {
-    document.getElementById('detailTitle').textContent = 'Beat Details';
-    document.getElementById('detailContent').innerHTML = '<div class="detail-section"><h3>Beat ID</h3><p>' + beatId + '</p><p>This is the beat context. In a full implementation, this would show beat-specific information like dramatic purpose, emotional arc, and story progression.</p></div>';
+function showNodeDetails(nodeId) {
+    const node = window.storyUI.getNode(nodeId);
+    document.getElementById('detailTitle').textContent = 'Node Details';
+    const text = node ? node.text : 'Unknown node';
+    document.getElementById('detailContent').innerHTML = '<div class="detail-section"><h3>Node ID</h3><p>' + nodeId + '</p><p>' + text + '</p></div>';
     document.getElementById('detailPane').classList.add('active');
 }
 
@@ -305,8 +301,7 @@ function handleAttributeUpdated(data) {
 window.entityDetails = {
     sectionOrder,
     showEntityDetails,
-    showSceneDetails,
-    showBeatDetails,
+    showNodeDetails,
     closeDetailPane,
     toggleSection,
     initializeDragAndDrop,

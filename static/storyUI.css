@@ -198,6 +198,36 @@ body.flash-green {
     border-bottom: 1px solid #333;
 }
 
+/* Tree-based story view */
+.story-tree {
+    list-style: none;
+    padding-left: 20px;
+}
+
+.story-tree .node {
+    margin: 4px 0;
+}
+
+.node-content {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.node-toggle {
+    width: 16px;
+    display: inline-block;
+    user-select: none;
+    cursor: pointer;
+    color: #888;
+}
+
+.node-children {
+    list-style: none;
+    margin-left: 20px;
+    padding-left: 0;
+}
+
 .generation-mode {
     color: #ff6b6b;
     font-weight: 600;
