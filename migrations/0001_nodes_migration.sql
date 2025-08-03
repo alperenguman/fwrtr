@@ -3,8 +3,9 @@
 -- Steps:
 -- 1. Create the new nodes table.
 -- 2. Copy distinct beat identifiers into nodes and capture generated node_ids.
--- 3. Add node_id columns to existing tables and backfill from nodes.
--- 4. Drop old beat_id columns and create foreign key constraints.
+-- 3. Add node_id columns with foreign key references.
+-- 4. Backfill node_id values from existing beat_id references.
+-- 5. Drop old beat_id columns.
 -- This script targets SQLite 3.35+ where DROP COLUMN is supported.
 BEGIN TRANSACTION;
 
@@ -26,13 +27,13 @@ INSERT INTO nodes (story_id, title, content)
 SELECT DISTINCT story_id, beat_id, ''
 FROM stories;
 
--- 3. Add node_id columns
-ALTER TABLE stories ADD COLUMN node_id INTEGER;
-ALTER TABLE states ADD COLUMN node_id INTEGER;
-ALTER TABLE relationships ADD COLUMN node_id INTEGER;
-ALTER TABLE perceptions ADD COLUMN node_id INTEGER;
-ALTER TABLE awareness ADD COLUMN node_id INTEGER;
-ALTER TABLE representations ADD COLUMN node_id INTEGER;
+-- 3. Add node_id columns with foreign key references
+ALTER TABLE stories ADD COLUMN node_id INTEGER REFERENCES nodes(node_id);
+ALTER TABLE states ADD COLUMN node_id INTEGER REFERENCES nodes(node_id);
+ALTER TABLE relationships ADD COLUMN node_id INTEGER REFERENCES nodes(node_id);
+ALTER TABLE perceptions ADD COLUMN node_id INTEGER REFERENCES nodes(node_id);
+ALTER TABLE awareness ADD COLUMN node_id INTEGER REFERENCES nodes(node_id);
+ALTER TABLE representations ADD COLUMN node_id INTEGER REFERENCES nodes(node_id);
 
 -- 4. Backfill node_id values
 UPDATE stories SET node_id = (
@@ -69,13 +70,5 @@ ALTER TABLE states DROP COLUMN beat_id;
 ALTER TABLE relationships DROP COLUMN beat_id;
 ALTER TABLE perceptions DROP COLUMN beat_id;
 ALTER TABLE awareness DROP COLUMN beat_id;
-
--- 6. Add foreign key constraints referencing nodes
-ALTER TABLE stories ADD FOREIGN KEY (node_id) REFERENCES nodes(node_id);
-ALTER TABLE states ADD FOREIGN KEY (node_id) REFERENCES nodes(node_id);
-ALTER TABLE relationships ADD FOREIGN KEY (node_id) REFERENCES nodes(node_id);
-ALTER TABLE perceptions ADD FOREIGN KEY (node_id) REFERENCES nodes(node_id);
-ALTER TABLE awareness ADD FOREIGN KEY (node_id) REFERENCES nodes(node_id);
-ALTER TABLE representations ADD FOREIGN KEY (node_id) REFERENCES nodes(node_id);
 
 COMMIT;
