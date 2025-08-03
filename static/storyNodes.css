@@ -1,0 +1,32 @@
+.story-node-panel {
+    padding: 10px;
+    background: #111;
+    border-bottom: 1px solid #333;
+    overflow-y: auto;
+    max-height: 40vh;
+}
+
+.node-list {
+    list-style: none;
+    padding-left: 20px;
+}
+
+.node {
+    margin: 4px 0;
+}
+
+.node-content {
+    padding: 4px 8px;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    cursor: grab;
+}
+
+.node-content:active {
+    cursor: grabbing;
+}
+
+.node-list:empty {
+    min-height: 10px;
+}

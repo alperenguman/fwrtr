@@ -6,6 +6,7 @@
 @import url('entityDetails.css');
 @import url('entityEditor.css');
 @import url('storyUI.css');
+@import url('storyNodes.css');
 
 /* Global Reset and Base Styles */
 * {

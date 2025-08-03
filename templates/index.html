@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='entityDetails.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='entityEditor.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='storyUI.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='storyNodes.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -35,7 +36,48 @@
                     <span id="toggleAutoEval" class="header-icon" title="Toggle auto evaluation">✨</span>
                 </div>
             </div>
-            
+
+            <div class="story-node-panel" id="storyNodePanel">
+                <h2>Story Nodes</h2>
+                <ul id="storyNodeList" class="node-list">
+                    <li class="node">
+                        <div class="node-content">Prologue</div>
+                        <ul class="node-list">
+                            <li class="node">
+                                <div class="node-content">Hook</div>
+                                <ul class="node-list"></ul>
+                            </li>
+                            <li class="node">
+                                <div class="node-content">Setup</div>
+                                <ul class="node-list"></ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="node">
+                        <div class="node-content">Conflict</div>
+                        <ul class="node-list">
+                            <li class="node">
+                                <div class="node-content">Rising Action</div>
+                                <ul class="node-list"></ul>
+                            </li>
+                            <li class="node">
+                                <div class="node-content">Climax</div>
+                                <ul class="node-list">
+                                    <li class="node">
+                                        <div class="node-content">Twist</div>
+                                        <ul class="node-list"></ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="node">
+                        <div class="node-content">Resolution</div>
+                        <ul class="node-list"></ul>
+                    </li>
+                </ul>
+            </div>
+
             <div class="chat-messages" id="chatMessages">
                 <div class="message system">
                     <div class="loading">Loading story...</div>
@@ -104,6 +146,7 @@
     <script src="{{ url_for('static', filename='entityDetails.js') }}"></script>
     <script src="{{ url_for('static', filename='entityEditor.js') }}"></script>
     <script src="{{ url_for('static', filename='storyUI.js') }}"></script>
+    <script src="{{ url_for('static', filename='storyNodes.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
