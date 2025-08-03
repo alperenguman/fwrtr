@@ -63,13 +63,26 @@ CREATE TABLE entity_aliases (
     UNIQUE(entity_id, alias_name) -- Prevent duplicate aliases for same entity
 );
 
+-- Hierarchical story nodes replacing beats
+CREATE TABLE nodes (
+    node_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    story_id TEXT NOT NULL,
+    parent_node_id INTEGER,
+    position INTEGER NOT NULL,
+    title TEXT,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_node_id) REFERENCES nodes(node_id)
+);
+
 -- Create states table for tracking contextual state changes
 CREATE TABLE states (
     state_id INTEGER PRIMARY KEY AUTOINCREMENT,
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    beat_id TEXT NOT NULL,
+    node_id INTEGER NOT NULL,
     
     -- Single entity reference - much cleaner!
     entity_id INTEGER NOT NULL,
@@ -100,7 +113,8 @@ CREATE TABLE states (
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (entity_id) REFERENCES entities(entity_id)
+    FOREIGN KEY (entity_id) REFERENCES entities(entity_id),
+    FOREIGN KEY (node_id) REFERENCES nodes(node_id)
 );
 
 -- Simplified relationships table with only state references
@@ -109,7 +123,7 @@ CREATE TABLE relationships (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    beat_id TEXT NOT NULL,
+    node_id INTEGER NOT NULL,
     state_id1 INTEGER NOT NULL,
     state_id2 INTEGER NOT NULL,
     description TEXT, -- LLM-generated description of how the states relate
@@ -117,7 +131,8 @@ CREATE TABLE relationships (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (state_id1) REFERENCES states(state_id),
-    FOREIGN KEY (state_id2) REFERENCES states(state_id)
+    FOREIGN KEY (state_id2) REFERENCES states(state_id),
+    FOREIGN KEY (node_id) REFERENCES nodes(node_id)
 );
 
 -- PERCEPTIONS - How states interpret other states based on their goals and history
@@ -126,7 +141,7 @@ CREATE TABLE perceptions (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    beat_id TEXT NOT NULL,
+    node_id INTEGER NOT NULL,
     
     -- WHO is perceiving: a state perceiving another state
     perceiver_state_id INTEGER NOT NULL, -- The state doing the perceiving
@@ -169,7 +184,8 @@ CREATE TABLE perceptions (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (perceiver_state_id) REFERENCES states(state_id),
-    FOREIGN KEY (perceived_state_id) REFERENCES states(state_id)
+    FOREIGN KEY (perceived_state_id) REFERENCES states(state_id),
+    FOREIGN KEY (node_id) REFERENCES nodes(node_id)
 );
 
 -- NEW: AWARENESS - Finite attention/context management system
@@ -179,7 +195,7 @@ CREATE TABLE awareness (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    beat_id TEXT NOT NULL,
+    node_id INTEGER NOT NULL,
     
     -- CONTEXT REFERENCE - exactly one of these will be non-null
     state_id INTEGER, -- Reference to a state that's in awareness
@@ -210,6 +226,7 @@ CREATE TABLE awareness (
     FOREIGN KEY (state_id) REFERENCES states(state_id) ON DELETE CASCADE,
     FOREIGN KEY (relationship_id) REFERENCES relationships(relationship_id) ON DELETE CASCADE,
     FOREIGN KEY (perception_id) REFERENCES perceptions(perception_id) ON DELETE CASCADE,
+    FOREIGN KEY (node_id) REFERENCES nodes(node_id) ON DELETE CASCADE,
     
     -- Ensure exactly one context reference is set
     CHECK (
@@ -231,6 +248,7 @@ CREATE TABLE representations (
     representation_id INTEGER PRIMARY KEY AUTOINCREMENT,
     relationship_id INTEGER,
     state_id INTEGER,
+    node_id INTEGER,
     type TEXT NOT NULL, -- 'visual' or 'audio'
     style TEXT,
     composition TEXT,
@@ -238,7 +256,8 @@ CREATE TABLE representations (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (relationship_id) REFERENCES relationships(relationship_id),
-    FOREIGN KEY (state_id) REFERENCES states(state_id)
+    FOREIGN KEY (state_id) REFERENCES states(state_id),
+    FOREIGN KEY (node_id) REFERENCES nodes(node_id)
 );
 
 -- Stories table for generated story content with versioning
@@ -247,7 +266,7 @@ CREATE TABLE stories (
     story_id TEXT NOT NULL,
     timeline_id TEXT NOT NULL,
     scene_id TEXT NOT NULL,
-    beat_id TEXT NOT NULL,
+    node_id INTEGER NOT NULL,
     
     -- Story content and metadata
     raw_text TEXT NOT NULL, -- Raw generated text before any processing
@@ -266,7 +285,8 @@ CREATE TABLE stories (
     status TEXT DEFAULT 'draft', -- 'draft', 'reviewed', 'approved', 'published'
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (node_id) REFERENCES nodes(node_id)
 );
 
 -- Agents table for agent definitions and configuration
@@ -340,15 +360,18 @@ CREATE INDEX idx_entity_aliases_entity_id ON entity_aliases(entity_id);
 CREATE INDEX idx_entity_aliases_alias_name ON entity_aliases(alias_name);
 CREATE INDEX idx_entity_aliases_type ON entity_aliases(alias_type);
 
+CREATE INDEX idx_nodes_story ON nodes(story_id);
+CREATE INDEX idx_nodes_parent ON nodes(parent_node_id);
+
 CREATE INDEX idx_states_story ON states(story_id);
 CREATE INDEX idx_states_scene ON states(scene_id);
-CREATE INDEX idx_states_beat ON states(beat_id);
+CREATE INDEX idx_states_node ON states(node_id);
 CREATE INDEX idx_states_entity ON states(entity_id);
 CREATE INDEX idx_states_attributes ON states(attributes);
 
 CREATE INDEX idx_relationships_story ON relationships(story_id);
 CREATE INDEX idx_relationships_scene ON relationships(scene_id);
-CREATE INDEX idx_relationships_beat ON relationships(beat_id);
+CREATE INDEX idx_relationships_node ON relationships(node_id);
 CREATE INDEX idx_relationships_state1 ON relationships(state_id1);
 CREATE INDEX idx_relationships_state2 ON relationships(state_id2);
 CREATE INDEX idx_relationships_description ON relationships(description);
@@ -356,7 +379,7 @@ CREATE INDEX idx_relationships_description ON relationships(description);
 -- Indexes for perceptions table
 CREATE INDEX idx_perceptions_story ON perceptions(story_id);
 CREATE INDEX idx_perceptions_scene ON perceptions(scene_id);
-CREATE INDEX idx_perceptions_beat ON perceptions(beat_id);
+CREATE INDEX idx_perceptions_node ON perceptions(node_id);
 CREATE INDEX idx_perceptions_perceiver_state ON perceptions(perceiver_state_id);
 CREATE INDEX idx_perceptions_perceived_state ON perceptions(perceived_state_id);
 CREATE INDEX idx_perceptions_confidence ON perceptions(confidence_level);
@@ -367,7 +390,7 @@ CREATE INDEX idx_perceptions_created ON perceptions(created_at);
 -- NEW: Indexes for awareness table - critical for performance
 CREATE INDEX idx_awareness_story ON awareness(story_id);
 CREATE INDEX idx_awareness_scene ON awareness(scene_id);
-CREATE INDEX idx_awareness_beat ON awareness(beat_id);
+CREATE INDEX idx_awareness_node ON awareness(node_id);
 CREATE INDEX idx_awareness_weight ON awareness(weight);
 CREATE INDEX idx_awareness_status ON awareness(status);
 CREATE INDEX idx_awareness_context_type ON awareness(context_type);
@@ -381,12 +404,13 @@ CREATE INDEX idx_awareness_last_weight_update ON awareness(last_weight_update);
 
 CREATE INDEX idx_representations_relationship ON representations(relationship_id);
 CREATE INDEX idx_representations_state ON representations(state_id);
+CREATE INDEX idx_representations_node ON representations(node_id);
 CREATE INDEX idx_representations_type ON representations(type);
 
 -- Indexes for stories table
 CREATE INDEX idx_stories_story_id ON stories(story_id);
 CREATE INDEX idx_stories_scene ON stories(scene_id);
-CREATE INDEX idx_stories_beat ON stories(beat_id);
+CREATE INDEX idx_stories_node ON stories(node_id);
 CREATE INDEX idx_stories_variant ON stories(variant);
 CREATE INDEX idx_stories_revision ON stories(revision);
 CREATE INDEX idx_stories_status ON stories(status);
