@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strywrtr 2D Card Plane</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="plane-container" id="planeContainer">
+        <!-- Cards will be dynamically added here -->
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <button class="tool-btn" onclick="createCard()">New Card</button>
+        <button class="tool-btn" onclick="deleteSelected()">Delete</button>
+        <button class="tool-btn" onclick="resetView()">Reset View</button>
+        <button class="tool-btn" onclick="toggleGrid()">Grid</button>
+        <button class="tool-btn" onclick="fractalTest()">Fractal Test</button>
+    </div>
+
+    <!-- Coordinates Display -->
+    <div class="coordinates" id="coordinates">
+        X: 0, Y: 0 | Zoom: 1.0x | Cards: 0
+    </div>
+
+    <!-- Selection Box -->
+    <div class="selection-box" id="selectionBox"></div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" onclick="createCard()">New Card</div>
+        <div class="context-menu-item" onclick="duplicateCard()">Duplicate</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="deleteSelected()">Delete Selected</div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
