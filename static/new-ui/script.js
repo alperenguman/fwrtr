@@ -1,749 +1,198 @@
-// Global state
-let cards = [];
-let selectedCards = new Set();
-let nextCardId = 1;
-let linkedEntities = new Map();
+// ===== Strywrtr – Fixes v3 =====
+// • Pointer-based drag/link/contain (no HTML5 DnD);
+// • Names render on first frame; carets default down; per-plane layouts; inline attributes.
 
-// Viewport state
-let viewX = 0;
-let viewY = 0;
-let zoom = 1.0;
+// ---------- Data ----------
+let all = [];              // canonical cards
+let nextId = 1;
+const byId = id => all.find(c=>c.id===id);
 
-// Interaction state
-let isDraggingPlane = false;
-let isDraggingCard = false;
-let isSelecting = false;
-let dragStartX = 0;
-let dragStartY = 0;
-let cardDragStartX = 0;
-let cardDragStartY = 0;
-let draggedCard = null;
-let selectionStartX = 0;
-let selectionStartY = 0;
-let dragOverCard = null;
+// Relations
+const parentsOf = new Map();   // child -> Set(parent)
+const childrenOf = new Map();  // parent -> Set(child)
+const links = new Map();       // undirected influence graph
+const ensure = (map,k)=>{ if(!map.has(k)) map.set(k,new Set()); return map.get(k); };
 
-// DOM references
-const planeContainer = document.getElementById('planeContainer');
-const coordinates = document.getElementById('coordinates');
-const selectionBox = document.getElementById('selectionBox');
-const contextMenu = document.getElementById('contextMenu');
+// ---------- Plane layout ----------
+let currentPlane = null;       // null = root
+let clones = [];               // [{refId,x,y}]
+const layouts = new Map();     // key('ROOT' or id) -> {viewX,viewY,cards:[]}
+const keyOf = pid => pid==null? 'ROOT' : String(pid);
+function ensureLayout(pid){ const k=keyOf(pid); if(!layouts.has(k)) layouts.set(k,{viewX:0,viewY:0,cards:[]}); return layouts.get(k); }
 
-// Linked Entities Helper Functions
-function generateLinkedEntitiesHtml(cardId) {
-    const linkedSet = linkedEntities.get(cardId);
-    const linkedCount = linkedSet ? linkedSet.size : 0;
-    
-    if (linkedCount === 0) {
-        return '<div class="linked-entities"><div class="linked-entities-header" onclick="toggleLinkedEntities(' + cardId + ')"><span class="linked-entities-toggle">▶</span><span>Linked Entities</span><span class="linked-entities-count">0</span></div><div class="linked-entities-list" id="linked-list-' + cardId + '"><div style="color: #666; font-style: italic; padding: 4px 8px;">No linked entities</div></div></div>';
-    }
-    
-    let linkedItemsHtml = '';
-    linkedSet.forEach(linkedCardId => {
-        const linkedCard = cards.find(c => c.id === linkedCardId);
-        if (linkedCard) {
-            linkedItemsHtml += '<div class="linked-entity-item" onclick="focusOnCard(' + linkedCardId + ')"><span class="linked-entity-name">' + linkedCard.name + '</span><span class="linked-entity-type">' + linkedCard.type + '</span></div>';
-        }
+// ---------- Camera / HUD ----------
+let viewX=0, viewY=0, zoom=1, depth=0;
+const plane = document.getElementById('plane');
+const hud = document.getElementById('hud');
+const breadcrumb = document.getElementById('breadcrumb');
+const bg = document.getElementById('backgroundText');
+const planeLabel = document.getElementById('planeLabel');
+const lasso = document.getElementById('lasso');
+const setCSS=(k,v)=>document.documentElement.style.setProperty(k,v);
+setCSS('--vx','0px'); setCSS('--vy','0px'); setCSS('--z','1');
+
+function updateView(){ setCSS('--vx', viewX+'px'); setCSS('--vy', viewY+'px'); setCSS('--z', zoom); plane.style.backgroundPosition=`${viewX%50}px ${viewY%50}px`; }
+function updateHUD(wx=0,wy=0){ hud.textContent=`X: ${Math.round(wx)}, Y: ${Math.round(wy)} | Zoom: ${zoom.toFixed(1)}x | Cards: ${clones.length}`; if(depth){ breadcrumb.style.display='block'; breadcrumb.innerHTML=`<strong>${['Root', ...stack.map(s=>byId(s.entered)?.name||'')].join(' › ')}</strong><br><span style="color:#666;font-size:10px;">Zoom out to go up</span>`; } else { breadcrumb.style.display='none'; breadcrumb.textContent=''; } }
+function showBG(){ if(depth===0){ bg.style.display='none'; planeLabel.style.display='none'; return; } const c=byId(currentPlane); bg.textContent=c?.content||''; bg.style.display=c&&c.content? 'block':'none'; bg.classList.add('bg-ambient'); planeLabel.textContent=c?.name||''; planeLabel.style.display=c? 'block':'none'; }
+
+// ---------- Visible model ----------
+function roots(){ return all.filter(c=> !(parentsOf.get(c.id)||new Set()).size).map(c=>c.id); }
+function visibleIds(){ return currentPlane==null? roots() : Array.from(childrenOf.get(currentPlane)||new Set()); }
+
+// ---------- Attributes ----------
+const esc = s => (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const escAttr = s => (''+s).replace(/"/g,'&quot;');
+const escRe = s => (s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+
+function linearParents(id){ const seen=new Set(), order=[]; (function dfs(x){ if(seen.has(x)) return; (parentsOf.get(x)||new Set()).forEach(p=>{ dfs(p); order.push(p); }); seen.add(x); })(id); return order; }
+function effectiveAttrs(id){ const me=byId(id); const out=[]; const ownKeys=new Set((me.attributes||[]).map(a=>a.key)); (me.attributes||[]).forEach(a=> out.push({...a,inherited:false})); linearParents(id).forEach(pid=>{ const p=byId(pid); if(!p) return; (p.attributes||[]).forEach(a=>{ if(!ownKeys.has(a.key)) out.push({...a,inherited:true,source:pid}); }); }); return out; }
+function resolveEntityByName(name){ if(!name) return null; const n=name.trim().toLowerCase(); return all.find(e=> (e.name||'').trim().toLowerCase()===n) || null; }
+
+// ---------- Render plane ----------
+function renderPlane(pid){ currentPlane = pid??null; plane.innerHTML=''; clones=[]; const ids = visibleIds(); const lay=ensureLayout(currentPlane); lay.cards = lay.cards.filter(v=> ids.includes(v.refId)); const missing = ids.filter(id=> !lay.cards.find(v=>v.refId===id)); if(missing.length){ const r=240, step=(Math.PI*2)/missing.length; let a=0; missing.forEach(id=>{ lay.cards.push({refId:id,x:Math.cos(a)*r,y:Math.sin(a)*r}); a+=step; }); }
+  clones = lay.cards.map(v=>({...v})); viewX=lay.viewX||0; viewY=lay.viewY||0; zoom=1; clones.forEach(v=> renderCard(v)); showBG(); updateView(); updateHUD(); }
+
+function renderCard(v){ const c=byId(v.refId); if(!c) return; const el=document.createElement('div'); el.className='card'; el.id='card-'+c.id; el.style.setProperty('--x', v.x+'px'); el.style.setProperty('--y', v.y+'px'); el.innerHTML=`
+  <div class="card-header">
+    <span class="card-title">${esc(c.name)}</span>
+    <div class="card-actions"><button class="card-action danger" onclick="deleteCard(${c.id})">×</button></div>
+  </div>
+  <div class="card-content">
+    <div class="card-type">${esc(c.type||'entity')}</div>
+
+    <div class="section-header" onclick="toggleSection('attrs',${c.id})">
+      <span class="caret down" id="caret-attrs-${c.id}">▶</span> Attributes
+    </div>
+    <div class="attr-list" id="attrs-${c.id}">${renderAttrRows(c)}</div>
+
+    <div class="card-text" id="txt-${c.id}">${linkify(esc(c.content||''), c.id)}</div>
+
+    <div class="section-header" onclick="toggleSection('links',${c.id})">
+      <span class="caret down" id="caret-links-${c.id}">▶</span> Linked Entities
+    </div>
+    <div class="link-list" id="links-${c.id}">${renderLinks(c.id)}</div>
+
+    <datalist id="dl-${c.id}">${visibleIds().map(id=>byId(id)).filter(Boolean).map(e=>`<option value="${escAttr(e.name)}">`).join('')}</datalist>
+  </div>`;
+
+  // dragging/select
+  el.addEventListener('mousedown', startCardDrag);
+  el.addEventListener('click', selectCard);
+
+  // text editing (caret where clicked)
+  const t = el.querySelector('#txt-'+c.id);
+  t.addEventListener('mousedown', e=>{ e.stopPropagation(); t.contentEditable=true; t.classList.add('editing'); });
+  t.addEventListener('blur', ()=>{ c.content=t.innerText.trim(); t.contentEditable=false; t.classList.remove('editing'); t.innerHTML=linkify(esc(c.content||''), c.id); if(currentPlane===c.id) showBG(); });
+  t.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); t.blur(); } });
+
+  plane.appendChild(el);
+  hydrateCard(c.id);
+}
+
+function renderAttrRows(card){
+  const rows = effectiveAttrs(card.id).map((a,i)=>{
+    const inh=a.inherited; const ent=a.kind==='entity';
+    return `<div class="attr-row ${inh?'inherited':''}" data-idx="${i}" ${inh? 'data-inh="1"':''}>
+      <input class="attr-key" ${inh? 'readonly':''} value="${escAttr(a.key||'')}" placeholder="key">
+      <input class="attr-val ${ent?'entity':''}" ${inh? 'readonly':''} ${inh? '':`list="dl-${card.id}"`} value="${escAttr(ent? (byId(a.entityId)?.name || a.value) : (a.value||''))}" placeholder="value">
+    </div>`;
+  }).join('');
+  return rows; // no trailing empty row
+}
+
+function renderLinks(cardId){ const set=links.get(cardId)||new Set(); if(!set.size) return '<div class="link-item" style="opacity:.6">No linked entities</div>'; return Array.from(set).map(id=>`<div class="link-item" data-id="${id}">${esc(byId(id)?.name||'')}</div>`).join(''); }
+
+function hydrateCard(cardId){
+  const root=document.getElementById('card-'+cardId); if(!root) return; const card=byId(cardId);
+  // attributes: click to edit anywhere; Enter to commit; empty key+value deletes; typing on inherited -> override
+  root.querySelectorAll('#attrs-'+cardId+' .attr-row').forEach(row=>{
+    const inh=row.dataset.inh==='1'; const k=row.querySelector('.attr-key'); const v=row.querySelector('.attr-val');
+    function commit(){ const key=(k.value||'').trim(); const val=(v.value||'').trim(); if(inh){ if(!key && !val) return; // turn into local override
+      const match=resolveEntityByName(val); const newAttr = match? {key,value:match.name,kind:'entity',entityId:match.id} : {key,value:val,kind:'text'}; const ix=(card.attributes||[]).findIndex(a=>a.key===key); if(ix>=0) card.attributes[ix]=newAttr; else { card.attributes=card.attributes||[]; card.attributes.push(newAttr); } updateCardUI(cardId); return; }
+      // editable row
+      const idx=parseInt(row.dataset.idx);
+      if(!key && !val){ if(idx<(card.attributes||[]).length){ card.attributes.splice(idx,1); updateCardUI(cardId); } return; }
+      const match=resolveEntityByName(val); if(!card.attributes) card.attributes=[]; card.attributes[idx]= match? {key,value:match.name,kind:'entity',entityId:match.id} : {key,value:val,kind:'text'}; updateCardUI(cardId); }
+    [k,v].forEach(inp=>{ inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); commit(); // add a new editable row at tail only if we actually added content and there is no empty row
+      const hasEmpty=false; if(!inh){ const last=(card.attributes||[])[(card.attributes||[]).length-1]; if(last && last.key && last.value){ // append a fresh row
+          card.attributes.push({key:'',value:'',kind:'text'}); updateCardUI(cardId, /*focusNew*/ true); } } }}); inp.addEventListener('blur', commit); if(inh){ inp.addEventListener('focus', ()=> inp.removeAttribute('readonly'), {once:true}); }
     });
-    
-    return '<div class="linked-entities"><div class="linked-entities-header" onclick="toggleLinkedEntities(' + cardId + ')"><span class="linked-entities-toggle">▶</span><span>Linked Entities</span><span class="linked-entities-count">' + linkedCount + '</span></div><div class="linked-entities-list" id="linked-list-' + cardId + '">' + linkedItemsHtml + '</div></div>';
+  });
+
+  // linked entities: click to edit, clear to unlink
+  root.querySelectorAll('#links-'+cardId+' .link-item').forEach(it=>{
+    it.addEventListener('click', ()=>{ const id=parseInt(it.dataset.id); const input=document.createElement('input'); input.className='link-input'; input.setAttribute('list','dl-'+cardId); input.value=it.textContent.trim(); it.replaceWith(input); input.focus(); function end(){ const name=(input.value||'').trim(); if(!name){ unlink(cardId,id); updateCardUI(cardId); return; } const match=resolveEntityByName(name); if(!match){ unlink(cardId,id); updateCardUI(cardId); return; } if(match.id!==id){ unlink(cardId,id); link(cardId,match.id); } updateCardUI(cardId); }
+      input.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); end(); }}); input.addEventListener('blur', end); });
+  });
 }
 
-function toggleLinkedEntities(cardId) {
-    const listElement = document.getElementById('linked-list-' + cardId);
-    const toggleElement = document.querySelector('#card-' + cardId + ' .linked-entities-toggle');
-    
-    if (listElement && toggleElement) {
-        if (listElement.classList.contains('expanded')) {
-            listElement.classList.remove('expanded');
-            toggleElement.classList.remove('expanded');
-        } else {
-            listElement.classList.add('expanded');
-            toggleElement.classList.add('expanded');
-        }
-    }
+function updateCardUI(cardId, focusNew=false){ const c=byId(cardId); const el=document.getElementById('card-'+cardId); if(!c||!el) return; el.querySelector('.card-title').textContent=c.name; el.querySelector('.card-type').textContent=c.type||'entity'; el.querySelector('#attrs-'+cardId).innerHTML=renderAttrRows(c); el.querySelector('#links-'+cardId).innerHTML=renderLinks(cardId); el.querySelector('#txt-'+cardId).innerHTML=linkify(esc(c.content||''), cardId); const dl=el.querySelector('#dl-'+cardId); if(dl){ dl.innerHTML=visibleIds().map(id=>byId(id)).filter(Boolean).map(e=>`<option value="${escAttr(e.name)}">`).join(''); } hydrateCard(cardId); if(focusNew){ const rows=el.querySelectorAll('#attrs-'+cardId+' .attr-row'); const last=rows[rows.length-1]; last?.querySelector('.attr-key')?.focus(); }
 }
 
-function focusOnCard(cardId) {
-    const card = cards.find(c => c.id === cardId);
-    if (!card) return;
-    
-    viewX = -card.x + window.innerWidth / 2 - 140;
-    viewY = -card.y + window.innerHeight / 2 - 100;
-    
-    updateViewport();
-    updateCoordinates();
-    
-    const cardElement = document.getElementById('card-' + cardId);
-    if (cardElement) {
-        cardElement.style.boxShadow = '0 0 30px rgba(0, 255, 136, 0.8)';
-        setTimeout(() => {
-            cardElement.style.boxShadow = '';
-        }, 1000);
-    }
-}
+// ---------- Drag / select ----------
+let selecting=false, selStartX=0, selStartY=0; let dragging=false, dragStartX=0, dragStartY=0, dragIds=[]; let hover=null; const LINK_ZONE=28; let selected=new Set();
 
-function processTextForLinks(text, currentCardId) {
-    let processedText = text;
-    
-    cards.forEach(card => {
-        if (card.id === currentCardId) return;
-        
-        const regex = new RegExp('\\b' + card.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi');
-        processedText = processedText.replace(regex, (match) => {
-            return '<span class="entity-link" onclick="focusOnCard(' + card.id + ')">' + match + '</span>';
-        });
-    });
-    
-    return processedText;
-}
+function selectCard(e){ e.stopPropagation(); const id=parseInt(e.currentTarget.id.split('-')[1]); if(!e.ctrlKey && !e.metaKey){ selected.clear(); document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); } if(selected.has(id)){ selected.delete(id); e.currentTarget.classList.remove('selected'); } else { selected.add(id); e.currentTarget.classList.add('selected'); } }
 
-function linkEntities(cardId1, cardId2) {
-    if (!linkedEntities.has(cardId1)) {
-        linkedEntities.set(cardId1, new Set());
-    }
-    if (!linkedEntities.has(cardId2)) {
-        linkedEntities.set(cardId2, new Set());
-    }
-    
-    linkedEntities.get(cardId1).add(cardId2);
-    linkedEntities.get(cardId2).add(cardId1);
-}
+function startCardDrag(e){ if(e.button!==0) return; if(e.target.closest('.card-text')||e.target.tagName==='INPUT') return; const box=e.currentTarget; const id=parseInt(box.id.split('-')[1]); if(!selected.has(id)){ selected.clear(); document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); selected.add(id); box.classList.add('selected'); }
+  dragging=true; dragStartX=(e.clientX - viewX)/zoom; dragStartY=(e.clientY - viewY)/zoom; dragIds=[...selected]; dragIds.forEach(cid=>{ const ix=clones.findIndex(v=>v.refId===cid); const el=document.getElementById('card-'+cid); if(ix>=0 && el){ el._ix=clones[ix].x; el._iy=clones[ix].y; } }); }
 
-// Drag and Drop Functions
-function handleDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
-}
+document.addEventListener('mousemove', e=>{ const wx=(e.clientX-viewX)/zoom, wy=(e.clientY-viewY)/zoom; if(dragging){ const dx=wx-dragStartX, dy=wy-dragStartY; dragIds.forEach(cid=>{ const ix=clones.findIndex(v=>v.refId===cid); const el=document.getElementById('card-'+cid); if(ix>=0&&el){ clones[ix].x=el._ix+dx; clones[ix].y=el._iy+dy; el.style.setProperty('--x', clones[ix].x+'px'); el.style.setProperty('--y', clones[ix].y+'px'); } }); const t=document.elementFromPoint(e.clientX,e.clientY)?.closest('.card'); if(hover && t!==hover){ hover.classList.remove('drop-target','link-zone'); } hover = (t && !dragIds.includes(parseInt(t.id.split('-')[1]))) ? t : null; if(hover){ hover.classList.add('drop-target'); const r=hover.getBoundingClientRect(); if(e.clientY>r.bottom-LINK_ZONE) hover.classList.add('link-zone'); else hover.classList.remove('link-zone'); } } updateHUD(wx,wy); });
 
-function handleDragEnter(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (draggedCard && e.currentTarget !== draggedCard) {
-        e.currentTarget.classList.add('drop-target');
-        dragOverCard = e.currentTarget;
-    }
-}
-
-function handleDragLeave(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-        e.currentTarget.classList.remove('drop-target');
-        if (dragOverCard === e.currentTarget) {
-            dragOverCard = null;
-        }
-    }
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (draggedCard && e.currentTarget !== draggedCard) {
-        const draggedCardId = parseInt(draggedCard.id.split('-')[1]);
-        const targetCardId = parseInt(e.currentTarget.id.split('-')[1]);
-        
-        linkEntities(draggedCardId, targetCardId);
-        
-        updateCardDisplay(cards.find(c => c.id === draggedCardId));
-        updateCardDisplay(cards.find(c => c.id === targetCardId));
-        
-        console.log('Linked entity ' + draggedCardId + ' to ' + targetCardId);
-    }
-    
-    e.currentTarget.classList.remove('drop-target');
-    dragOverCard = null;
-}
-
-// Card Functions
-function createCard(x, y) {
-    x = x !== null && x !== undefined ? x : -viewX + window.innerWidth / 2 - 140;
-    y = y !== null && y !== undefined ? y : -viewY + window.innerHeight / 2 - 100;
-    
-    const card = {
-        id: nextCardId++,
-        x: x,
-        y: y,
-        name: 'Entity ' + (nextCardId - 1),
-        type: 'entity',
-        content: 'Click here to edit content...'
-    };
-    
-    cards.push(card);
-    renderCard(card);
-    updateCoordinates();
-}
-
-function updateCardDisplay(card) {
-    const cardElement = document.getElementById('card-' + card.id);
-    if (cardElement) {
-        cardElement.querySelector('.card-title').textContent = card.name;
-        const cardTextElement = cardElement.querySelector('.card-text');
-        cardTextElement.innerHTML = processTextForLinks(card.content, card.id);
-        
-        const linkedEntitiesSection = cardElement.querySelector('.linked-entities');
-        if (linkedEntitiesSection) {
-            linkedEntitiesSection.outerHTML = generateLinkedEntitiesHtml(card.id);
-        }
-    }
-}
-
-function renderCard(card) {
-    const cardElement = document.createElement('div');
-    cardElement.className = 'card';
-    cardElement.id = 'card-' + card.id;
-    cardElement.style.left = card.x + 'px';
-    cardElement.style.top = card.y + 'px';
-    
-    cardElement.innerHTML = '<div class="card-header"><span class="card-title">' + card.name + '</span><div class="card-actions"><button class="card-action" onclick="editCard(' + card.id + ')">Edit</button><button class="card-action danger" onclick="deleteCard(' + card.id + ')">×</button></div></div><div class="card-content"><div class="card-type">' + card.type + '</div><div class="card-text" onclick="editCardContent(' + card.id + ', event)">' + card.content + '</div><div class="linked-entities"><div class="linked-entities-header" onclick="toggleLinkedEntities(' + card.id + ')"><span class="linked-entities-toggle">▶</span><span>Linked Entities</span><span class="linked-entities-count">0</span></div><div class="linked-entities-list" id="linked-list-' + card.id + '"><div style="color: #666; font-style: italic; padding: 4px 8px;">No linked entities</div></div></div></div>';
-
-    cardElement.addEventListener('mousedown', startCardDrag);
-    cardElement.addEventListener('click', selectCard);
-    cardElement.addEventListener('dblclick', editCard);
-    cardElement.addEventListener('dragover', handleDragOver);
-    cardElement.addEventListener('drop', handleDrop);
-    cardElement.addEventListener('dragenter', handleDragEnter);
-    cardElement.addEventListener('dragleave', handleDragLeave);
-    
-    planeContainer.appendChild(cardElement);
-}
-
-// Card interaction
-function selectCard(e) {
-    e.stopPropagation();
-    const cardId = parseInt(e.currentTarget.id.split('-')[1]);
-    
-    if (!e.ctrlKey && !e.metaKey) {
-        selectedCards.clear();
-        document.querySelectorAll('.card.selected').forEach(el => {
-            el.classList.remove('selected');
-        });
-    }
-    
-    if (selectedCards.has(cardId)) {
-        selectedCards.delete(cardId);
-        e.currentTarget.classList.remove('selected');
-    } else {
-        selectedCards.add(cardId);
-        e.currentTarget.classList.add('selected');
-    }
-}
-
-function startCardDrag(e) {
-    if (e.button !== 0) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    isDraggingCard = true;
-    draggedCard = e.currentTarget;
-    
-    // Simple approach: calculate offset in screen coordinates, then convert during drag
-    const cardScreenRect = draggedCard.getBoundingClientRect();
-    cardDragStartX = e.clientX - cardScreenRect.left;
-    cardDragStartY = e.clientY - cardScreenRect.top;
-    
-    draggedCard.classList.add('dragging');
-    draggedCard.draggable = true;
-    
-    const cardId = parseInt(draggedCard.id.split('-')[1]);
-    if (!selectedCards.has(cardId)) {
-        selectedCards.clear();
-        document.querySelectorAll('.card.selected').forEach(el => {
-            el.classList.remove('selected');
-        });
-        selectedCards.add(cardId);
-        draggedCard.classList.add('selected');
-    }
-}
-
-function editCard(cardIdOrEvent) {
-    let cardId;
-    if (typeof cardIdOrEvent === 'number') {
-        cardId = cardIdOrEvent;
-    } else {
-        cardId = parseInt(cardIdOrEvent.currentTarget.id.split('-')[1]);
-    }
-    
-    const card = cards.find(c => c.id === cardId);
-    if (!card) return;
-    
-    const newName = prompt('Entity Name:', card.name);
-    if (newName !== null && newName.trim() !== '') {
-        card.name = newName.trim();
-        updateCardDisplay(card);
-    }
-}
-
-function editCardContent(cardId, event) {
-    event.stopPropagation();
-    
-    const card = cards.find(c => c.id === cardId);
-    if (!card) return;
-    
-    const cardTextElement = event.target;
-    const originalContent = card.content;
-    
-    const originalHeight = cardTextElement.offsetHeight;
-    const originalWidth = cardTextElement.offsetWidth;
-    
-    cardTextElement.contentEditable = true;
-    cardTextElement.classList.add('editing');
-    
-    cardTextElement.style.height = originalHeight + 'px';
-    cardTextElement.style.width = originalWidth + 'px';
-    cardTextElement.style.maxHeight = originalHeight + 'px';
-    cardTextElement.style.minHeight = originalHeight + 'px';
-    
-    cardTextElement.focus();
-    
-    const range = document.createRange();
-    const selection = window.getSelection();
-    
-    selection.removeAllRanges();
-    
-    const textNode = cardTextElement.firstChild || cardTextElement;
-    if (textNode.nodeType === Node.TEXT_NODE) {
-        const rect = cardTextElement.getBoundingClientRect();
-        const clickX = event.clientX - rect.left;
-        
-        const charWidth = 7;
-        const charPosition = Math.min(Math.max(0, Math.round(clickX / charWidth)), textNode.textContent.length);
-        
-        range.setStart(textNode, charPosition);
-        range.setEnd(textNode, charPosition);
-    } else {
-        range.setStart(cardTextElement, 0);
-        range.setEnd(cardTextElement, 0);
-    }
-    
-    selection.addRange(range);
-    
-    function saveContent() {
-        cardTextElement.contentEditable = false;
-        cardTextElement.classList.remove('editing');
-        
-        cardTextElement.style.height = '';
-        cardTextElement.style.width = '';
-        cardTextElement.style.maxHeight = '';
-        cardTextElement.style.minHeight = '';
-        
-        const newContent = cardTextElement.textContent.trim();
-        if (newContent !== '') {
-            card.content = newContent;
-        } else {
-            card.content = originalContent;
-            cardTextElement.textContent = originalContent;
-        }
-        
-        cardTextElement.removeEventListener('blur', saveContent);
-        cardTextElement.removeEventListener('keydown', handleKeydown);
-    }
-    
-    function handleKeydown(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            cardTextElement.blur();
-        } else if (e.key === 'Escape') {
-            cardTextElement.textContent = originalContent;
-            cardTextElement.blur();
-        }
-    }
-    
-    cardTextElement.addEventListener('blur', saveContent);
-    cardTextElement.addEventListener('keydown', handleKeydown);
-}
-
-function deleteCard(cardId) {
-    const cardIndex = cards.findIndex(c => c.id === cardId);
-    if (cardIndex !== -1) {
-        if (linkedEntities.has(cardId)) {
-            const linkedSet = linkedEntities.get(cardId);
-            linkedSet.forEach(linkedCardId => {
-                linkedEntities.get(linkedCardId).delete(cardId);
-                updateCardDisplay(cards.find(c => c.id === linkedCardId));
-            });
-            linkedEntities.delete(cardId);
-        }
-        
-        cards.splice(cardIndex, 1);
-        const cardElement = document.getElementById('card-' + cardId);
-        if (cardElement) {
-            cardElement.remove();
-        }
-        selectedCards.delete(cardId);
-        updateCoordinates();
-    }
-}
-
-function deleteSelected() {
-    Array.from(selectedCards).forEach(cardId => {
-        deleteCard(cardId);
-    });
-}
-
-function duplicateCard() {
-    if (selectedCards.size === 1) {
-        const cardId = Array.from(selectedCards)[0];
-        const originalCard = cards.find(c => c.id === cardId);
-        if (originalCard) {
-            createCard(originalCard.x + 20, originalCard.y + 20);
-        }
-    }
-}
-
-// Plane interaction
-function startPlaneDrag(e) {
-    if (e.button !== 0) return;
-    if (e.target.closest('.card')) return;
-    
-    selectedCards.clear();
-    document.querySelectorAll('.card.selected').forEach(el => {
-        el.classList.remove('selected');
-    });
-    
-    isDraggingPlane = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    
-    planeContainer.classList.add('dragging');
-    planeContainer.style.cursor = 'grabbing';
-}
-
-function startSelection(e) {
-    if (e.button !== 0) return;
-    if (e.target.closest('.card')) return;
-    
-    selectedCards.clear();
-    document.querySelectorAll('.card.selected').forEach(el => {
-        el.classList.remove('selected');
-    });
-    
-    isSelecting = true;
-    selectionStartX = e.clientX;
-    selectionStartY = e.clientY;
-    
-    selectionBox.style.left = selectionStartX + 'px';
-    selectionBox.style.top = selectionStartY + 'px';
-    selectionBox.style.width = '0px';
-    selectionBox.style.height = '0px';
-    selectionBox.style.display = 'block';
-}
-
-// Mouse event handlers
-planeContainer.addEventListener('mousedown', (e) => {
-    hideContextMenu();
-    
-    if (e.shiftKey) {
-        startSelection(e);
-    } else {
-        startPlaneDrag(e);
-    }
+document.addEventListener('mouseup', e=>{ if(dragging){ const lay=ensureLayout(currentPlane); lay.cards = clones.map(v=>({...v})); if(hover){ const targetId=parseInt(hover.id.split('-')[1]); const sourceId=dragIds[0]; if(targetId && sourceId && targetId!==sourceId){ const r=hover.getBoundingClientRect(); if(e.clientY>r.bottom-LINK_ZONE) link(sourceId,targetId); else contain(targetId,sourceId); updateCardUI(sourceId); updateCardUI(targetId); } hover.classList.remove('drop-target','link-zone'); hover=null; } dragging=false; dragIds=[]; }
+  if(selecting){ selecting=false; lasso.style.display='none'; }
 });
 
-document.addEventListener('mousemove', (e) => {
-    const worldX = e.clientX - viewX;
-    const worldY = e.clientY - viewY;
-    
-    if (isDraggingPlane) {
-        const deltaX = e.clientX - dragStartX;
-        const deltaY = e.clientY - dragStartY;
-        
-        viewX += deltaX;
-        viewY += deltaY;
-        
-        updateViewport();
-        
-        dragStartX = e.clientX;
-        dragStartY = e.clientY;
-        
-    } else if (isDraggingCard && draggedCard) {
-        // Convert mouse position to world coordinates accounting for zoom and pan
-        const newWorldX = (e.clientX - cardDragStartX - viewX) / zoom;
-        const newWorldY = (e.clientY - cardDragStartY - viewY) / zoom;
-        
-        const currentWorldX = parseFloat(draggedCard.style.left);
-        const currentWorldY = parseFloat(draggedCard.style.top);
-        
-        const deltaX = newWorldX - currentWorldX;
-        const deltaY = newWorldY - currentWorldY;
-        
-        selectedCards.forEach(cardId => {
-            const card = cards.find(c => c.id === cardId);
-            const cardElement = document.getElementById('card-' + cardId);
-            if (card && cardElement) {
-                card.x += deltaX;
-                card.y += deltaY;
-                cardElement.style.left = card.x + 'px';
-                cardElement.style.top = card.y + 'px';
-            }
-        })
-        
-    } else if (isSelecting) {
-        const currentX = e.clientX;
-        const currentY = e.clientY;
-        
-        const left = Math.min(selectionStartX, currentX);
-        const top = Math.min(selectionStartY, currentY);
-        const width = Math.abs(currentX - selectionStartX);
-        const height = Math.abs(currentY - selectionStartY);
-        
-        selectionBox.style.left = left + 'px';
-        selectionBox.style.top = top + 'px';
-        selectionBox.style.width = width + 'px';
-        selectionBox.style.height = height + 'px';
-        
-        updateSelection(left, top, width, height);
-    }
-    
-    updateCoordinates(worldX, worldY);
-});
+plane.addEventListener('mousedown', e=>{ if(e.shiftKey){ if(e.button!==0||e.target.closest('.card')) return; selecting=true; selStartX=e.clientX; selStartY=e.clientY; Object.assign(lasso.style,{left:selStartX+'px',top:selStartY+'px',width:'0px',height:'0px',display:'block'}); } else { if(e.button!==0||e.target.closest('.card')) return; selected.clear(); document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); draggingPlane=true; plane.classList.add('dragging'); plane.style.cursor='grabbing'; planeStartX=e.clientX; planeStartY=e.clientY; } });
 
-document.addEventListener('mouseup', (e) => {
-    if (isDraggingPlane) {
-        isDraggingPlane = false;
-        planeContainer.classList.remove('dragging');
-        planeContainer.style.cursor = 'grab';
-    }
-    
-    if (isDraggingCard) {
-        isDraggingCard = false;
-        if (draggedCard) {
-            draggedCard.classList.remove('dragging');
-            draggedCard.draggable = false;
-            draggedCard = null;
-        }
-    }
-    
-    if (isSelecting) {
-        isSelecting = false;
-        selectionBox.style.display = 'none';
-    }
-    
-    document.querySelectorAll('.card.drop-target').forEach(el => {
-        el.classList.remove('drop-target');
-    });
-    dragOverCard = null;
-});
+function updateSelection(left,top,w,h){ document.querySelectorAll('.card').forEach(el=>{ const r=el.getBoundingClientRect(); const id=parseInt(el.id.split('-')[1]); const hit=!(r.right<left||r.left>left+w||r.bottom<top||r.top>top+h); if(hit){ selected.add(id); el.classList.add('selected'); } else { selected.delete(id); el.classList.remove('selected'); } }); }
 
-// Selection logic
-function updateSelection(left, top, width, height) {
-    document.querySelectorAll('.card').forEach(cardElement => {
-        const rect = cardElement.getBoundingClientRect();
-        const cardId = parseInt(cardElement.id.split('-')[1]);
-        
-        const isIntersecting = !(
-            rect.right < left ||
-            rect.left > left + width ||
-            rect.bottom < top ||
-            rect.top > top + height
-        );
-        
-        if (isIntersecting) {
-            selectedCards.add(cardId);
-            cardElement.classList.add('selected');
-        } else {
-            selectedCards.delete(cardId);
-            cardElement.classList.remove('selected');
-        }
-    });
-}
+// plane panning
+let draggingPlane=false, planeStartX=0, planeStartY=0;
+document.addEventListener('mousemove', e=>{ if(draggingPlane){ const dx=e.clientX-planeStartX, dy=e.clientY-planeStartY; viewX+=dx; viewY+=dy; planeStartX=e.clientX; planeStartY=e.clientY; updateView(); } if(selecting){ const cx=e.clientX, cy=e.clientY; const l=Math.min(selStartX,cx), t=Math.min(selStartY,cy); const w=Math.abs(cx-selStartX), h=Math.abs(cy-selStartY); Object.assign(lasso.style,{left:l+'px',top:t+'px',width:w+'px',height:h+'px'}); updateSelection(l,t,w,h); } });
+document.addEventListener('mouseup', ()=>{ if(draggingPlane){ draggingPlane=false; plane.classList.remove('dragging'); plane.style.cursor='grab'; const lay=ensureLayout(currentPlane); lay.viewX=viewX; lay.viewY=viewY; } });
 
-// Context menu
-planeContainer.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    
-    contextMenu.style.left = e.clientX + 'px';
-    contextMenu.style.top = e.clientY + 'px';
-    contextMenu.style.display = 'block';
-});
+// ---------- Linking / containment ----------
+function link(a,b){ if(a===b) return; ensure(links,a).add(b); ensure(links,b).add(a); }
+function unlink(a,b){ links.get(a)?.delete(b); links.get(b)?.delete(a); }
+function contain(parent,child){ if(parent===child) return; ensure(childrenOf,parent).add(child); ensure(parentsOf,child).add(parent); }
 
-function hideContextMenu() {
-    contextMenu.style.display = 'none';
-}
+// ---------- Sections ----------
+function toggleSection(kind, id){ const caret=document.getElementById(`caret-${kind}-${id}`); const body=document.getElementById(`${kind}-${id}`); if(!caret||!body) return; const open=getComputedStyle(body).display!=='none'; body.style.display=open?'none':'block'; caret.classList.toggle('down', !open); }
 
-document.addEventListener('click', hideContextMenu);
+// ---------- Wheel zoom / enter / exit ----------
+const stack=[]; // {planeId,entered}
+plane.addEventListener('wheel', e=>{ e.preventDefault(); const f=e.deltaY<0?1.1:0.9; const nz=Math.max(.1,Math.min(10,zoom*f)); const hovered=document.elementFromPoint(e.clientX,e.clientY)?.closest('.card'); if(nz!==zoom){ const old=zoom; zoom=nz; if(hovered && zoom>=3 && old<3 && depth===0){ const id=parseInt(hovered.id.split('-')[1]); zoom=1; enter(id); } else if(depth>0 && zoom<=.5 && old>.5){ zoom=1; exit(); } else { const mx=e.clientX,my=e.clientY; const wxB=(mx-viewX)/old, wyB=(my-viewY)/old; const wxA=(mx-viewX)/zoom, wyA=(my-viewY)/zoom; viewX+=(wxA-wxB)*zoom; viewY+=(wyA-wyB)*zoom; updateView(); updateHUD(); } } }, {passive:false});
 
-// Viewport management
-function updateViewport() {
-    planeContainer.style.setProperty('--bg-x', viewX + 'px');
-    planeContainer.style.setProperty('--bg-y', viewY + 'px');
-    planeContainer.style.setProperty('--view-x', viewX + 'px');
-    planeContainer.style.setProperty('--view-y', viewY + 'px');
-    planeContainer.style.setProperty('--zoom', zoom);
-}
+function enter(id){ const lay=ensureLayout(currentPlane); lay.viewX=viewX; lay.viewY=viewY; stack.push({planeId:currentPlane,entered:id}); depth++; currentPlane=id; renderPlane(currentPlane); center(); }
+function exit(){ if(!stack.length) return; const prev=stack.pop(); depth--; currentPlane=prev.planeId??null; renderPlane(currentPlane); // center back on the card we exited from
+  if(prev.entered!=null) setTimeout(()=> focusOn(prev.entered), 20); }
 
-function updateCoordinates(worldX, worldY) {
-    worldX = worldX || 0;
-    worldY = worldY || 0;
-    coordinates.textContent = 'X: ' + Math.round(worldX) + ', Y: ' + Math.round(worldY) + ' | Zoom: ' + zoom.toFixed(1) + 'x | Cards: ' + cards.length;
-}
+function center(){ if(!clones.length) return; let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity; clones.forEach(c=>{ minX=Math.min(minX,c.x); minY=Math.min(minY,c.y); maxX=Math.max(maxX,c.x+340); maxY=Math.max(maxY,c.y+220); }); const cx=(minX+maxX)/2, cy=(minY+maxY)/2; viewX=innerWidth/2 - (cx*zoom); viewY=innerHeight/2 - (cy*zoom); updateView(); }
+function focusOn(id){ const v=clones.find(c=>c.refId===id); if(!v) return; viewX=-v.x*zoom + innerWidth/2 - 170*zoom; viewY=-v.y*zoom + innerHeight/2 - 110*zoom; updateView(); const el=document.getElementById('card-'+id); if(el){ el.style.boxShadow='0 0 30px rgba(0,255,136,.8)'; setTimeout(()=> el.style.boxShadow='', 900); } }
 
-// Toolbar functions
-function resetView() {
-    viewX = 0;
-    viewY = 0;
-    zoom = 1.0;
-    updateViewport();
-    updateCoordinates();
-}
+// ---------- Text linkify ----------
+function linkify(text, selfId){ let out=text; all.forEach(k=>{ if(!k.name||k.id===selfId) return; const re=new RegExp('\\b'+escRe(k.name)+'\\b','gi'); out=out.replace(re, m=>`<span class="entity-link" onclick="focusOn(${k.id})">${m}</span>`); }); return out; }
 
-function toggleGrid() {
-    console.log('Grid toggle not implemented yet');
-}
+// ---------- CRUD / toolbar ----------
+function createCard(x,y){ if(x==null) x=(innerWidth/2 - viewX)/zoom - 160; if(y==null) y=(innerHeight/2 - viewY)/zoom - 110; const c={id:nextId++,name:'Entity '+(nextId-1),type:'entity',content:'',attributes:[]}; all.push(c); const lay=ensureLayout(currentPlane); lay.cards.push({refId:c.id,x,y}); renderCard({refId:c.id,x,y}); updateHUD(); return c; }
+function deleteCard(id){ links.get(id)?.forEach(o=>links.get(o)?.delete(id)); links.delete(id); parentsOf.get(id)?.forEach(p=>childrenOf.get(p)?.delete(id)); parentsOf.delete(id); childrenOf.get(id)?.forEach(ch=>parentsOf.get(ch)?.delete(id)); childrenOf.delete(id); all=all.filter(c=>c.id!==id); layouts.forEach(l=> l.cards=l.cards.filter(v=>v.refId!==id)); document.getElementById('card-'+id)?.remove(); selected.delete(id); updateHUD(); }
+function deleteSelected(){ [...selected].forEach(deleteCard); }
+function resetView(){ viewX=0; viewY=0; zoom=1; updateView(); updateHUD(); }
 
-function fractalTest() {
-    // Create a card that demonstrates fractal zoom
-    const centerX = -viewX + window.innerWidth / 2 - 140;
-    const centerY = -viewY + window.innerHeight / 2 - 100;
-    
-    const fractalCard = {
-        id: nextCardId++,
-        x: centerX,
-        y: centerY,
-        name: 'Fractal Test Card',
-        type: 'test',
-        content: 'This card should work with zoom interactions. Try zooming into it!'
-    };
-    
-    cards.push(fractalCard);
-    renderCard(fractalCard);
-    updateCoordinates();
-    
-    // Focus on this card
-    setTimeout(() => {
-        focusOnCard(fractalCard.id);
-    }, 100);
-}
+// ---------- Seed + first render (names set before render) ----------
+(function seed(){
+  const a={id:nextId++,name:'Sarah Chen',type:'Actor',content:'A marine biologist studying deep-sea creatures. She works at The Research Station and is concerned about the Strange Readings.',attributes:[{key:'Role',value:'Lead scientist',kind:'text'}]};
+  const b={id:nextId++,name:'The Research Station',type:'Location',content:'A remote underwater facility 200 meters below the Pacific Ocean surface. Sarah Chen conducts her research here.',attributes:[]};
+  const d={id:nextId++,name:'Strange Readings',type:'Event',content:'Sonar equipment detects unusual patterns below The Research Station. Sarah Chen is investigating.',attributes:[]};
+  all.push(a,b,d);
+  ensure(childrenOf,a.id); ensure(childrenOf,b.id); ensure(childrenOf,d.id);
+  // links for demo
+  ensure(links,a.id).add(b.id); ensure(links,b.id).add(a.id); ensure(links,a.id).add(d.id); ensure(links,d.id).add(a.id); ensure(links,b.id).add(d.id); ensure(links,d.id).add(b.id);
+  // root layout
+  const L=ensureLayout(null); L.cards=[{refId:a.id,x:120,y:110},{refId:b.id,x:430,y:150},{refId:d.id,x:240,y:320}];
+  renderPlane(null); // names render correctly immediately
+})();
 
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-    if (document.activeElement.contentEditable === 'true') {
-        return;
-    }
-    
-    switch(e.key) {
-        case 'n':
-        case 'N':
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                createCard();
-            }
-            break;
-        case 'Delete':
-        case 'Backspace':
-            if (selectedCards.size > 0) {
-                deleteSelected();
-            }
-            break;
-        case 'd':
-        case 'D':
-            if ((e.ctrlKey || e.metaKey) && selectedCards.size > 0) {
-                e.preventDefault();
-                duplicateCard();
-            }
-            break;
-        case 'Escape':
-            selectedCards.clear();
-            document.querySelectorAll('.card.selected').forEach(el => {
-                el.classList.remove('selected');
-            });
-            break;
-        case 'ArrowLeft':
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                viewX += 50;
-                updateViewport();
-            }
-            break;
-        case 'ArrowRight':
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                viewX -= 50;
-                updateViewport();
-            }
-            break;
-        case 'ArrowUp':
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                viewY += 50;
-                updateViewport();
-            }
-            break;
-        case 'ArrowDown':
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                viewY -= 50;
-                updateViewport();
-            }
-            break;
-    }
-});
-
-// Zoom with mouse wheel (zoom to pointer)
-planeContainer.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    const newZoom = Math.max(0.1, Math.min(5.0, zoom * zoomFactor));
-    
-    if (newZoom !== zoom) {
-        // Get mouse position relative to viewport
-        const mouseX = e.clientX;
-        const mouseY = e.clientY;
-        
-        // Calculate world position before zoom
-        const worldBeforeX = (mouseX - viewX) / zoom;
-        const worldBeforeY = (mouseY - viewY) / zoom;
-        
-        // Update zoom
-        zoom = newZoom;
-        
-        // Calculate world position after zoom
-        const worldAfterX = (mouseX - viewX) / zoom;
-        const worldAfterY = (mouseY - viewY) / zoom;
-        
-        // Adjust view to keep same world point under mouse
-        viewX += (worldAfterX - worldBeforeX) * zoom;
-        viewY += (worldAfterY - worldBeforeY) * zoom;
-        
-        updateViewport();
-        updateCoordinates();
-    }
-});
-
-// Initialize with some sample cards
-function initializePlane() {
-    createCard(100, 100);
-    createCard(400, 150);
-    createCard(200, 300);
-    
-    setTimeout(() => {
-        if (cards.length >= 3) {
-            cards[0].name = 'Sarah Chen';
-            cards[0].type = 'Actor';
-            cards[0].content = 'A marine biologist studying deep-sea creatures. She works at The Research Station and is concerned about the Strange Readings.';
-            
-            cards[1].name = 'The Research Station';
-            cards[1].type = 'Location';
-            cards[1].content = 'A remote underwater facility 200 meters below the Pacific Ocean surface. Sarah Chen conducts her research here.';
-            
-            cards[2].name = 'Strange Readings';
-            cards[2].type = 'Event';
-            cards[2].content = 'Sonar equipment detects unusual patterns from the abyssal depths below The Research Station. Sarah Chen is investigating this phenomenon.';
-            
-            linkEntities(1, 2);
-            linkEntities(1, 3);
-            linkEntities(2, 3);
-            
-            cards.forEach(updateCardDisplay);
-        }
-    }, 100);
-    
-    updateCoordinates();
-}
-
-// Start the application
-initializePlane();
+// Expose minimal API
+window.createCard=createCard; window.deleteSelected=deleteSelected; window.resetView=resetView; window.deleteCard=deleteCard;
