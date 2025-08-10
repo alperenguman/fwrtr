@@ -1,6 +1,8 @@
-// ===== Strywrtr – Fixes v3 =====
-// • Pointer-based drag/link/contain (no HTML5 DnD);
-// • Names render on first frame; carets default down; per-plane layouts; inline attributes.
+// ===== Strywrtr – Fixes v4 =====
+// • Fixed: Enter creates new attribute line, backspace removes empty lines
+// • Fixed: Drag & drop for containment and linking
+// • Fixed: Entity autocomplete limited to linked entities
+// • Fixed: Empty attribute row shows when section expanded with no attributes
 
 // ---------- Data ----------
 let all = [];              // canonical cards
@@ -46,7 +48,14 @@ const escRe = s => (s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 
 function linearParents(id){ const seen=new Set(), order=[]; (function dfs(x){ if(seen.has(x)) return; (parentsOf.get(x)||new Set()).forEach(p=>{ dfs(p); order.push(p); }); seen.add(x); })(id); return order; }
 function effectiveAttrs(id){ const me=byId(id); const out=[]; const ownKeys=new Set((me.attributes||[]).map(a=>a.key)); (me.attributes||[]).forEach(a=> out.push({...a,inherited:false})); linearParents(id).forEach(pid=>{ const p=byId(pid); if(!p) return; (p.attributes||[]).forEach(a=>{ if(!ownKeys.has(a.key)) out.push({...a,inherited:true,source:pid}); }); }); return out; }
-function resolveEntityByName(name){ if(!name) return null; const n=name.trim().toLowerCase(); return all.find(e=> (e.name||'').trim().toLowerCase()===n) || null; }
+
+// FIX 3: Only search linked entities for attribute values
+function resolveEntityByNameFromLinked(name, cardId){ 
+  if(!name) return null; 
+  const n=name.trim().toLowerCase(); 
+  const linkedIds = Array.from(links.get(cardId)||new Set());
+  return linkedIds.map(id=>byId(id)).find(e=> e && (e.name||'').trim().toLowerCase()===n) || null; 
+}
 
 // ---------- Render plane ----------
 function renderPlane(pid){ currentPlane = pid??null; plane.innerHTML=''; clones=[]; const ids = visibleIds(); const lay=ensureLayout(currentPlane); lay.cards = lay.cards.filter(v=> ids.includes(v.refId)); const missing = ids.filter(id=> !lay.cards.find(v=>v.refId===id)); if(missing.length){ const r=240, step=(Math.PI*2)/missing.length; let a=0; missing.forEach(id=>{ lay.cards.push({refId:id,x:Math.cos(a)*r,y:Math.sin(a)*r}); a+=step; }); }
@@ -72,7 +81,7 @@ function renderCard(v){ const c=byId(v.refId); if(!c) return; const el=document.
     </div>
     <div class="link-list" id="links-${c.id}">${renderLinks(c.id)}</div>
 
-    <datalist id="dl-${c.id}">${visibleIds().map(id=>byId(id)).filter(Boolean).map(e=>`<option value="${escAttr(e.name)}">`).join('')}</datalist>
+    <datalist id="dl-${c.id}">${getLinkedEntitiesOptions(c.id)}</datalist>
   </div>`;
 
   // dragging/select
@@ -89,110 +98,609 @@ function renderCard(v){ const c=byId(v.refId); if(!c) return; const el=document.
   hydrateCard(c.id);
 }
 
+// FIX 3: Get options only from linked entities
+function getLinkedEntitiesOptions(cardId){
+  const linkedIds = Array.from(links.get(cardId)||new Set());
+  return linkedIds.map(id=>byId(id)).filter(Boolean).map(e=>`<option value="${escAttr(e.name)}">`).join('');
+}
+
+// FIX 1 & 4: Proper attribute row rendering with empty row when needed
 function renderAttrRows(card){
-  const rows = effectiveAttrs(card.id).map((a,i)=>{
-    const inh=a.inherited; const ent=a.kind==='entity';
+  const attrs = effectiveAttrs(card.id);
+  
+  // FIX 4: If no attributes at all, show one empty editable row
+  if(attrs.length === 0) {
+    return `<div class="attr-row" data-idx="0">
+      <input class="attr-key" value="" placeholder="key">
+      <input class="attr-val" list="dl-${card.id}" value="" placeholder="value">
+    </div>`;
+  }
+  
+  // Render existing attributes
+  const rows = attrs.map((a,i)=>{
+    const inh=a.inherited; 
+    const ent=a.kind==='entity';
     return `<div class="attr-row ${inh?'inherited':''}" data-idx="${i}" ${inh? 'data-inh="1"':''}>
       <input class="attr-key" ${inh? 'readonly':''} value="${escAttr(a.key||'')}" placeholder="key">
       <input class="attr-val ${ent?'entity':''}" ${inh? 'readonly':''} ${inh? '':`list="dl-${card.id}"`} value="${escAttr(ent? (byId(a.entityId)?.name || a.value) : (a.value||''))}" placeholder="value">
     </div>`;
   }).join('');
-  return rows; // no trailing empty row
+  
+  return rows;
 }
 
 function renderLinks(cardId){ const set=links.get(cardId)||new Set(); if(!set.size) return '<div class="link-item" style="opacity:.6">No linked entities</div>'; return Array.from(set).map(id=>`<div class="link-item" data-id="${id}">${esc(byId(id)?.name||'')}</div>`).join(''); }
 
+// FIX 1: Enhanced attribute handling with Enter/Backspace
 function hydrateCard(cardId){
-  const root=document.getElementById('card-'+cardId); if(!root) return; const card=byId(cardId);
-  // attributes: click to edit anywhere; Enter to commit; empty key+value deletes; typing on inherited -> override
+  const root=document.getElementById('card-'+cardId); 
+  if(!root) return; 
+  const card=byId(cardId);
+  
+  // attributes: enhanced handling
   root.querySelectorAll('#attrs-'+cardId+' .attr-row').forEach(row=>{
-    const inh=row.dataset.inh==='1'; const k=row.querySelector('.attr-key'); const v=row.querySelector('.attr-val');
-    function commit(){ const key=(k.value||'').trim(); const val=(v.value||'').trim(); if(inh){ if(!key && !val) return; // turn into local override
-      const match=resolveEntityByName(val); const newAttr = match? {key,value:match.name,kind:'entity',entityId:match.id} : {key,value:val,kind:'text'}; const ix=(card.attributes||[]).findIndex(a=>a.key===key); if(ix>=0) card.attributes[ix]=newAttr; else { card.attributes=card.attributes||[]; card.attributes.push(newAttr); } updateCardUI(cardId); return; }
+    const inh=row.dataset.inh==='1'; 
+    const k=row.querySelector('.attr-key'); 
+    const v=row.querySelector('.attr-val');
+    
+    function commit(addNewRow=false){ 
+      const key=(k.value||'').trim(); 
+      const val=(v.value||'').trim(); 
+      
+      if(inh){ 
+        if(!key && !val) return;
+        // FIX 3: Use linked entities only
+        const match=resolveEntityByNameFromLinked(val, cardId); 
+        const newAttr = match? {key,value:match.name,kind:'entity',entityId:match.id} : {key,value:val,kind:'text'}; 
+        const ix=(card.attributes||[]).findIndex(a=>a.key===key); 
+        if(ix>=0) card.attributes[ix]=newAttr; 
+        else { 
+          card.attributes=card.attributes||[]; 
+          card.attributes.push(newAttr); 
+        } 
+        updateCardUI(cardId); 
+        return; 
+      }
+      
       // editable row
       const idx=parseInt(row.dataset.idx);
-      if(!key && !val){ if(idx<(card.attributes||[]).length){ card.attributes.splice(idx,1); updateCardUI(cardId); } return; }
-      const match=resolveEntityByName(val); if(!card.attributes) card.attributes=[]; card.attributes[idx]= match? {key,value:match.name,kind:'entity',entityId:match.id} : {key,value:val,kind:'text'}; updateCardUI(cardId); }
-    [k,v].forEach(inp=>{ inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); commit(); // add a new editable row at tail only if we actually added content and there is no empty row
-      const hasEmpty=false; if(!inh){ const last=(card.attributes||[])[(card.attributes||[]).length-1]; if(last && last.key && last.value){ // append a fresh row
-          card.attributes.push({key:'',value:'',kind:'text'}); updateCardUI(cardId, /*focusNew*/ true); } } }}); inp.addEventListener('blur', commit); if(inh){ inp.addEventListener('focus', ()=> inp.removeAttribute('readonly'), {once:true}); }
+      
+      // FIX 1: Handle empty rows properly
+      if(!key && !val){ 
+        // If it's not the last row or there's only one row, remove it
+        const allRows = root.querySelectorAll('#attrs-'+cardId+' .attr-row:not(.inherited)');
+        if(allRows.length > 1 || (card.attributes && card.attributes.length > 0)) {
+          if(idx < (card.attributes||[]).length){ 
+            card.attributes.splice(idx,1); 
+            updateCardUI(cardId); 
+          }
+        }
+        return; 
+      }
+      
+      // FIX 3: Use linked entities only
+      const match=resolveEntityByNameFromLinked(val, cardId); 
+      if(!card.attributes) card.attributes=[]; 
+      card.attributes[idx]= match? {key,value:match.name,kind:'entity',entityId:match.id} : {key,value:val,kind:'text'}; 
+      
+      // FIX 1: Add new row if needed
+      if(addNewRow && key && val) {
+        // Check if this is the last non-inherited row
+        const nonInheritedAttrs = (card.attributes||[]).filter(a => !a.inherited);
+        if(idx === nonInheritedAttrs.length - 1) {
+          card.attributes.push({key:'',value:'',kind:'text'});
+          updateCardUI(cardId, true);
+          return;
+        }
+      }
+      
+      updateCardUI(cardId); 
+    }
+    
+    // FIX 1: Enhanced keyboard handling
+    [k,v].forEach(inp=>{ 
+      inp.addEventListener('keydown',e=>{ 
+        if(e.key==='Enter'){ 
+          e.preventDefault(); 
+          commit(true); // Pass true to potentially add new row
+        } else if(e.key==='Backspace' && inp.value === '' && !inh) {
+          // If backspace on empty field, check if we should remove the row
+          const otherInp = (inp === k) ? v : k;
+          if(otherInp.value === '') {
+            e.preventDefault();
+            commit(false);
+          }
+        }
+      }); 
+      
+      inp.addEventListener('blur', () => commit(false)); 
+      
+      if(inh){ 
+        inp.addEventListener('focus', ()=> inp.removeAttribute('readonly'), {once:true}); 
+      }
     });
   });
 
   // linked entities: click to edit, clear to unlink
   root.querySelectorAll('#links-'+cardId+' .link-item').forEach(it=>{
-    it.addEventListener('click', ()=>{ const id=parseInt(it.dataset.id); const input=document.createElement('input'); input.className='link-input'; input.setAttribute('list','dl-'+cardId); input.value=it.textContent.trim(); it.replaceWith(input); input.focus(); function end(){ const name=(input.value||'').trim(); if(!name){ unlink(cardId,id); updateCardUI(cardId); return; } const match=resolveEntityByName(name); if(!match){ unlink(cardId,id); updateCardUI(cardId); return; } if(match.id!==id){ unlink(cardId,id); link(cardId,match.id); } updateCardUI(cardId); }
-      input.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); end(); }}); input.addEventListener('blur', end); });
+    it.addEventListener('click', ()=>{ 
+      const id=parseInt(it.dataset.id); 
+      const input=document.createElement('input'); 
+      input.className='link-input'; 
+      // Don't use datalist for link editing - these are already linked
+      input.value=it.textContent.trim(); 
+      it.replaceWith(input); 
+      input.focus(); 
+      
+      function end(){ 
+        const name=(input.value||'').trim(); 
+        if(!name){ 
+          unlink(cardId,id); 
+          updateCardUI(cardId); 
+          return; 
+        } 
+        // Search all entities for linking
+        const match=all.find(e=> (e.name||'').trim().toLowerCase()===name.toLowerCase()); 
+        if(!match){ 
+          unlink(cardId,id); 
+          updateCardUI(cardId); 
+          return; 
+        } 
+        if(match.id!==id){ 
+          unlink(cardId,id); 
+          link(cardId,match.id); 
+        } 
+        updateCardUI(cardId); 
+      }
+      
+      input.addEventListener('keydown',e=>{ 
+        if(e.key==='Enter'){ 
+          e.preventDefault(); 
+          end(); 
+        }
+      }); 
+      input.addEventListener('blur', end); 
+    });
   });
 }
 
-function updateCardUI(cardId, focusNew=false){ const c=byId(cardId); const el=document.getElementById('card-'+cardId); if(!c||!el) return; el.querySelector('.card-title').textContent=c.name; el.querySelector('.card-type').textContent=c.type||'entity'; el.querySelector('#attrs-'+cardId).innerHTML=renderAttrRows(c); el.querySelector('#links-'+cardId).innerHTML=renderLinks(cardId); el.querySelector('#txt-'+cardId).innerHTML=linkify(esc(c.content||''), cardId); const dl=el.querySelector('#dl-'+cardId); if(dl){ dl.innerHTML=visibleIds().map(id=>byId(id)).filter(Boolean).map(e=>`<option value="${escAttr(e.name)}">`).join(''); } hydrateCard(cardId); if(focusNew){ const rows=el.querySelectorAll('#attrs-'+cardId+' .attr-row'); const last=rows[rows.length-1]; last?.querySelector('.attr-key')?.focus(); }
+function updateCardUI(cardId, focusNew=false){ 
+  const c=byId(cardId); 
+  const el=document.getElementById('card-'+cardId); 
+  if(!c||!el) return; 
+  
+  el.querySelector('.card-title').textContent=c.name; 
+  el.querySelector('.card-type').textContent=c.type||'entity'; 
+  el.querySelector('#attrs-'+cardId).innerHTML=renderAttrRows(c); 
+  el.querySelector('#links-'+cardId).innerHTML=renderLinks(cardId); 
+  el.querySelector('#txt-'+cardId).innerHTML=linkify(esc(c.content||''), cardId); 
+  
+  // FIX 3: Update datalist with linked entities only
+  const dl=el.querySelector('#dl-'+cardId); 
+  if(dl){ 
+    dl.innerHTML=getLinkedEntitiesOptions(cardId); 
+  } 
+  
+  hydrateCard(cardId); 
+  
+  if(focusNew){ 
+    const rows=el.querySelectorAll('#attrs-'+cardId+' .attr-row'); 
+    const last=rows[rows.length-1]; 
+    last?.querySelector('.attr-key')?.focus(); 
+  }
 }
 
 // ---------- Drag / select ----------
-let selecting=false, selStartX=0, selStartY=0; let dragging=false, dragStartX=0, dragStartY=0, dragIds=[]; let hover=null; const LINK_ZONE=28; let selected=new Set();
+let selecting=false, selStartX=0, selStartY=0; 
+let dragging=false, dragStartX=0, dragStartY=0, dragIds=[]; 
+let hover=null; 
+const LINK_ZONE=40; // FIX 2: Increased link zone height
+let selected=new Set();
 
-function selectCard(e){ e.stopPropagation(); const id=parseInt(e.currentTarget.id.split('-')[1]); if(!e.ctrlKey && !e.metaKey){ selected.clear(); document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); } if(selected.has(id)){ selected.delete(id); e.currentTarget.classList.remove('selected'); } else { selected.add(id); e.currentTarget.classList.add('selected'); } }
+function selectCard(e){ 
+  e.stopPropagation(); 
+  const id=parseInt(e.currentTarget.id.split('-')[1]); 
+  if(!e.ctrlKey && !e.metaKey){ 
+    selected.clear(); 
+    document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); 
+  } 
+  if(selected.has(id)){ 
+    selected.delete(id); 
+    e.currentTarget.classList.remove('selected'); 
+  } else { 
+    selected.add(id); 
+    e.currentTarget.classList.add('selected'); 
+  } 
+}
 
-function startCardDrag(e){ if(e.button!==0) return; if(e.target.closest('.card-text')||e.target.tagName==='INPUT') return; const box=e.currentTarget; const id=parseInt(box.id.split('-')[1]); if(!selected.has(id)){ selected.clear(); document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); selected.add(id); box.classList.add('selected'); }
-  dragging=true; dragStartX=(e.clientX - viewX)/zoom; dragStartY=(e.clientY - viewY)/zoom; dragIds=[...selected]; dragIds.forEach(cid=>{ const ix=clones.findIndex(v=>v.refId===cid); const el=document.getElementById('card-'+cid); if(ix>=0 && el){ el._ix=clones[ix].x; el._iy=clones[ix].y; } }); }
+function startCardDrag(e){ 
+  if(e.button!==0) return; 
+  if(e.target.closest('.card-text')||e.target.tagName==='INPUT') return; 
+  
+  const box=e.currentTarget; 
+  const id=parseInt(box.id.split('-')[1]); 
+  
+  if(!selected.has(id)){ 
+    selected.clear(); 
+    document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); 
+    selected.add(id); 
+    box.classList.add('selected'); 
+  }
+  
+  dragging=true; 
+  dragStartX=(e.clientX - viewX)/zoom; 
+  dragStartY=(e.clientY - viewY)/zoom; 
+  dragIds=[...selected]; 
+  
+  dragIds.forEach(cid=>{ 
+    const ix=clones.findIndex(v=>v.refId===cid); 
+    const el=document.getElementById('card-'+cid); 
+    if(ix>=0 && el){ 
+      el._ix=clones[ix].x; 
+      el._iy=clones[ix].y; 
+    } 
+  }); 
+}
 
-document.addEventListener('mousemove', e=>{ const wx=(e.clientX-viewX)/zoom, wy=(e.clientY-viewY)/zoom; if(dragging){ const dx=wx-dragStartX, dy=wy-dragStartY; dragIds.forEach(cid=>{ const ix=clones.findIndex(v=>v.refId===cid); const el=document.getElementById('card-'+cid); if(ix>=0&&el){ clones[ix].x=el._ix+dx; clones[ix].y=el._iy+dy; el.style.setProperty('--x', clones[ix].x+'px'); el.style.setProperty('--y', clones[ix].y+'px'); } }); const t=document.elementFromPoint(e.clientX,e.clientY)?.closest('.card'); if(hover && t!==hover){ hover.classList.remove('drop-target','link-zone'); } hover = (t && !dragIds.includes(parseInt(t.id.split('-')[1]))) ? t : null; if(hover){ hover.classList.add('drop-target'); const r=hover.getBoundingClientRect(); if(e.clientY>r.bottom-LINK_ZONE) hover.classList.add('link-zone'); else hover.classList.remove('link-zone'); } } updateHUD(wx,wy); });
-
-document.addEventListener('mouseup', e=>{ if(dragging){ const lay=ensureLayout(currentPlane); lay.cards = clones.map(v=>({...v})); if(hover){ const targetId=parseInt(hover.id.split('-')[1]); const sourceId=dragIds[0]; if(targetId && sourceId && targetId!==sourceId){ const r=hover.getBoundingClientRect(); if(e.clientY>r.bottom-LINK_ZONE) link(sourceId,targetId); else contain(targetId,sourceId); updateCardUI(sourceId); updateCardUI(targetId); } hover.classList.remove('drop-target','link-zone'); hover=null; } dragging=false; dragIds=[]; }
-  if(selecting){ selecting=false; lasso.style.display='none'; }
+// FIX 2: Enhanced drag & drop for containment and linking
+document.addEventListener('mousemove', e=>{ 
+  const wx=(e.clientX-viewX)/zoom, wy=(e.clientY-viewY)/zoom; 
+  
+  if(dragging){ 
+    const dx=wx-dragStartX, dy=wy-dragStartY; 
+    
+    dragIds.forEach(cid=>{ 
+      const ix=clones.findIndex(v=>v.refId===cid); 
+      const el=document.getElementById('card-'+cid); 
+      if(ix>=0&&el){ 
+        clones[ix].x=el._ix+dx; 
+        clones[ix].y=el._iy+dy; 
+        el.style.setProperty('--x', clones[ix].x+'px'); 
+        el.style.setProperty('--y', clones[ix].y+'px'); 
+      } 
+    }); 
+    
+    // FIX 2: Better hover detection
+    const t=document.elementFromPoint(e.clientX,e.clientY)?.closest('.card'); 
+    
+    if(hover && t!==hover){ 
+      hover.classList.remove('drop-target','link-zone'); 
+    } 
+    
+    hover = (t && !dragIds.includes(parseInt(t.id.split('-')[1]))) ? t : null; 
+    
+    if(hover){ 
+      const r=hover.getBoundingClientRect(); 
+      // FIX 2: Check if we're in the link zone (bottom portion)
+      if(e.clientY > r.bottom - LINK_ZONE) {
+        hover.classList.add('drop-target', 'link-zone'); 
+      } else {
+        hover.classList.add('drop-target'); 
+        hover.classList.remove('link-zone'); 
+      }
+    } 
+  } 
+  
+  updateHUD(wx,wy); 
 });
 
-plane.addEventListener('mousedown', e=>{ if(e.shiftKey){ if(e.button!==0||e.target.closest('.card')) return; selecting=true; selStartX=e.clientX; selStartY=e.clientY; Object.assign(lasso.style,{left:selStartX+'px',top:selStartY+'px',width:'0px',height:'0px',display:'block'}); } else { if(e.button!==0||e.target.closest('.card')) return; selected.clear(); document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); draggingPlane=true; plane.classList.add('dragging'); plane.style.cursor='grabbing'; planeStartX=e.clientX; planeStartY=e.clientY; } });
+// FIX 2: Proper containment and linking on drop
+document.addEventListener('mouseup', e=>{ 
+  if(dragging){ 
+    const lay=ensureLayout(currentPlane); 
+    lay.cards = clones.map(v=>({...v})); 
+    
+    if(hover && dragIds.length > 0){ 
+      const targetId=parseInt(hover.id.split('-')[1]); 
+      const sourceId=dragIds[0]; // Use first selected card
+      
+      if(targetId && sourceId && targetId!==sourceId){ 
+        const r=hover.getBoundingClientRect(); 
+        
+        // FIX 2: Determine action based on drop position
+        if(e.clientY > r.bottom - LINK_ZONE) {
+          // Link the entities
+          link(sourceId, targetId); 
+        } else {
+          // Contain: make source a child of target
+          contain(targetId, sourceId); 
+        }
+        
+        updateCardUI(sourceId); 
+        updateCardUI(targetId); 
+      } 
+      
+      hover.classList.remove('drop-target','link-zone'); 
+      hover=null; 
+    } 
+    
+    dragging=false; 
+    dragIds=[]; 
+  }
+  
+  if(selecting){ 
+    selecting=false; 
+    lasso.style.display='none'; 
+  }
+});
 
-function updateSelection(left,top,w,h){ document.querySelectorAll('.card').forEach(el=>{ const r=el.getBoundingClientRect(); const id=parseInt(el.id.split('-')[1]); const hit=!(r.right<left||r.left>left+w||r.bottom<top||r.top>top+h); if(hit){ selected.add(id); el.classList.add('selected'); } else { selected.delete(id); el.classList.remove('selected'); } }); }
+plane.addEventListener('mousedown', e=>{ 
+  if(e.shiftKey){ 
+    if(e.button!==0||e.target.closest('.card')) return; 
+    selecting=true; 
+    selStartX=e.clientX; 
+    selStartY=e.clientY; 
+    Object.assign(lasso.style,{left:selStartX+'px',top:selStartY+'px',width:'0px',height:'0px',display:'block'}); 
+  } else { 
+    if(e.button!==0||e.target.closest('.card')) return; 
+    selected.clear(); 
+    document.querySelectorAll('.card.selected').forEach(n=>n.classList.remove('selected')); 
+    draggingPlane=true; 
+    plane.classList.add('dragging'); 
+    plane.style.cursor='grabbing'; 
+    planeStartX=e.clientX; 
+    planeStartY=e.clientY; 
+  } 
+});
+
+function updateSelection(left,top,w,h){ 
+  document.querySelectorAll('.card').forEach(el=>{ 
+    const r=el.getBoundingClientRect(); 
+    const id=parseInt(el.id.split('-')[1]); 
+    const hit=!(r.right<left||r.left>left+w||r.bottom<top||r.top>top+h); 
+    if(hit){ 
+      selected.add(id); 
+      el.classList.add('selected'); 
+    } else { 
+      selected.delete(id); 
+      el.classList.remove('selected'); 
+    } 
+  }); 
+}
 
 // plane panning
 let draggingPlane=false, planeStartX=0, planeStartY=0;
-document.addEventListener('mousemove', e=>{ if(draggingPlane){ const dx=e.clientX-planeStartX, dy=e.clientY-planeStartY; viewX+=dx; viewY+=dy; planeStartX=e.clientX; planeStartY=e.clientY; updateView(); } if(selecting){ const cx=e.clientX, cy=e.clientY; const l=Math.min(selStartX,cx), t=Math.min(selStartY,cy); const w=Math.abs(cx-selStartX), h=Math.abs(cy-selStartY); Object.assign(lasso.style,{left:l+'px',top:t+'px',width:w+'px',height:h+'px'}); updateSelection(l,t,w,h); } });
-document.addEventListener('mouseup', ()=>{ if(draggingPlane){ draggingPlane=false; plane.classList.remove('dragging'); plane.style.cursor='grab'; const lay=ensureLayout(currentPlane); lay.viewX=viewX; lay.viewY=viewY; } });
+document.addEventListener('mousemove', e=>{ 
+  if(draggingPlane){ 
+    const dx=e.clientX-planeStartX, dy=e.clientY-planeStartY; 
+    viewX+=dx; viewY+=dy; 
+    planeStartX=e.clientX; 
+    planeStartY=e.clientY; 
+    updateView(); 
+  } 
+  if(selecting){ 
+    const cx=e.clientX, cy=e.clientY; 
+    const l=Math.min(selStartX,cx), t=Math.min(selStartY,cy); 
+    const w=Math.abs(cx-selStartX), h=Math.abs(cy-selStartY); 
+    Object.assign(lasso.style,{left:l+'px',top:t+'px',width:w+'px',height:h+'px'}); 
+    updateSelection(l,t,w,h); 
+  } 
+});
+
+document.addEventListener('mouseup', ()=>{ 
+  if(draggingPlane){ 
+    draggingPlane=false; 
+    plane.classList.remove('dragging'); 
+    plane.style.cursor='grab'; 
+    const lay=ensureLayout(currentPlane); 
+    lay.viewX=viewX; 
+    lay.viewY=viewY; 
+  } 
+});
 
 // ---------- Linking / containment ----------
-function link(a,b){ if(a===b) return; ensure(links,a).add(b); ensure(links,b).add(a); }
-function unlink(a,b){ links.get(a)?.delete(b); links.get(b)?.delete(a); }
-function contain(parent,child){ if(parent===child) return; ensure(childrenOf,parent).add(child); ensure(parentsOf,child).add(parent); }
+function link(a,b){ 
+  if(a===b) return; 
+  ensure(links,a).add(b); 
+  ensure(links,b).add(a); 
+}
+
+function unlink(a,b){ 
+  links.get(a)?.delete(b); 
+  links.get(b)?.delete(a); 
+}
+
+// FIX 2: Proper containment that establishes parent-child relationship
+function contain(parent,child){ 
+  if(parent===child) return; 
+  
+  // Add to parent's children
+  ensure(childrenOf,parent).add(child); 
+  
+  // Add to child's parents
+  ensure(parentsOf,child).add(parent); 
+  
+  // Remove from current plane if it's visible
+  const lay = ensureLayout(currentPlane);
+  lay.cards = lay.cards.filter(v => v.refId !== child);
+  
+  // Re-render to update the view
+  renderPlane(currentPlane);
+}
 
 // ---------- Sections ----------
-function toggleSection(kind, id){ const caret=document.getElementById(`caret-${kind}-${id}`); const body=document.getElementById(`${kind}-${id}`); if(!caret||!body) return; const open=getComputedStyle(body).display!=='none'; body.style.display=open?'none':'block'; caret.classList.toggle('down', !open); }
+function toggleSection(kind, id){ 
+  const caret=document.getElementById(`caret-${kind}-${id}`); 
+  const body=document.getElementById(`${kind}-${id}`); 
+  if(!caret||!body) return; 
+  
+  const open=getComputedStyle(body).display!=='none'; 
+  body.style.display=open?'none':'block'; 
+  caret.classList.toggle('down', !open); 
+  
+  // FIX 4: If opening attributes and it's empty, ensure empty row exists
+  if(!open && kind === 'attrs') {
+    const card = byId(id);
+    if(card) {
+      const attrs = effectiveAttrs(id);
+      // If no attributes at all (not even inherited), ensure we have an empty one
+      if(attrs.length === 0 && (!card.attributes || card.attributes.length === 0)) {
+        card.attributes = [{key:'',value:'',kind:'text'}];
+        updateCardUI(id);
+      }
+    }
+  }
+}
 
 // ---------- Wheel zoom / enter / exit ----------
 const stack=[]; // {planeId,entered}
-plane.addEventListener('wheel', e=>{ e.preventDefault(); const f=e.deltaY<0?1.1:0.9; const nz=Math.max(.1,Math.min(10,zoom*f)); const hovered=document.elementFromPoint(e.clientX,e.clientY)?.closest('.card'); if(nz!==zoom){ const old=zoom; zoom=nz; if(hovered && zoom>=3 && old<3 && depth===0){ const id=parseInt(hovered.id.split('-')[1]); zoom=1; enter(id); } else if(depth>0 && zoom<=.5 && old>.5){ zoom=1; exit(); } else { const mx=e.clientX,my=e.clientY; const wxB=(mx-viewX)/old, wyB=(my-viewY)/old; const wxA=(mx-viewX)/zoom, wyA=(my-viewY)/zoom; viewX+=(wxA-wxB)*zoom; viewY+=(wyA-wyB)*zoom; updateView(); updateHUD(); } } }, {passive:false});
+plane.addEventListener('wheel', e=>{ 
+  e.preventDefault(); 
+  const f=e.deltaY<0?1.1:0.9; 
+  const nz=Math.max(.1,Math.min(10,zoom*f)); 
+  const hovered=document.elementFromPoint(e.clientX,e.clientY)?.closest('.card'); 
+  
+  if(nz!==zoom){ 
+    const old=zoom; 
+    zoom=nz; 
+    
+    if(hovered && zoom>=3 && old<3 && depth===0){ 
+      const id=parseInt(hovered.id.split('-')[1]); 
+      zoom=1; 
+      enter(id); 
+    } else if(depth>0 && zoom<=.5 && old>.5){ 
+      zoom=1; 
+      exit(); 
+    } else { 
+      const mx=e.clientX,my=e.clientY; 
+      const wxB=(mx-viewX)/old, wyB=(my-viewY)/old; 
+      const wxA=(mx-viewX)/zoom, wyA=(my-viewY)/zoom; 
+      viewX+=(wxA-wxB)*zoom; 
+      viewY+=(wyA-wyB)*zoom; 
+      updateView(); 
+      updateHUD(); 
+    } 
+  } 
+}, {passive:false});
 
-function enter(id){ const lay=ensureLayout(currentPlane); lay.viewX=viewX; lay.viewY=viewY; stack.push({planeId:currentPlane,entered:id}); depth++; currentPlane=id; renderPlane(currentPlane); center(); }
-function exit(){ if(!stack.length) return; const prev=stack.pop(); depth--; currentPlane=prev.planeId??null; renderPlane(currentPlane); // center back on the card we exited from
-  if(prev.entered!=null) setTimeout(()=> focusOn(prev.entered), 20); }
+function enter(id){ 
+  const lay=ensureLayout(currentPlane); 
+  lay.viewX=viewX; 
+  lay.viewY=viewY; 
+  stack.push({planeId:currentPlane,entered:id}); 
+  depth++; 
+  currentPlane=id; 
+  renderPlane(currentPlane); 
+  center(); 
+}
 
-function center(){ if(!clones.length) return; let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity; clones.forEach(c=>{ minX=Math.min(minX,c.x); minY=Math.min(minY,c.y); maxX=Math.max(maxX,c.x+340); maxY=Math.max(maxY,c.y+220); }); const cx=(minX+maxX)/2, cy=(minY+maxY)/2; viewX=innerWidth/2 - (cx*zoom); viewY=innerHeight/2 - (cy*zoom); updateView(); }
-function focusOn(id){ const v=clones.find(c=>c.refId===id); if(!v) return; viewX=-v.x*zoom + innerWidth/2 - 170*zoom; viewY=-v.y*zoom + innerHeight/2 - 110*zoom; updateView(); const el=document.getElementById('card-'+id); if(el){ el.style.boxShadow='0 0 30px rgba(0,255,136,.8)'; setTimeout(()=> el.style.boxShadow='', 900); } }
+function exit(){ 
+  if(!stack.length) return; 
+  const prev=stack.pop(); 
+  depth--; 
+  currentPlane=prev.planeId??null; 
+  renderPlane(currentPlane); 
+  // center back on the card we exited from
+  if(prev.entered!=null) setTimeout(()=> focusOn(prev.entered), 20); 
+}
+
+function center(){ 
+  if(!clones.length) return; 
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity; 
+  clones.forEach(c=>{ 
+    minX=Math.min(minX,c.x); 
+    minY=Math.min(minY,c.y); 
+    maxX=Math.max(maxX,c.x+340); 
+    maxY=Math.max(maxY,c.y+220); 
+  }); 
+  const cx=(minX+maxX)/2, cy=(minY+maxY)/2; 
+  viewX=innerWidth/2 - (cx*zoom); 
+  viewY=innerHeight/2 - (cy*zoom); 
+  updateView(); 
+}
+
+function focusOn(id){ 
+  const v=clones.find(c=>c.refId===id); 
+  if(!v) return; 
+  viewX=-v.x*zoom + innerWidth/2 - 170*zoom; 
+  viewY=-v.y*zoom + innerHeight/2 - 110*zoom; 
+  updateView(); 
+  const el=document.getElementById('card-'+id); 
+  if(el){ 
+    el.style.boxShadow='0 0 30px rgba(0,255,136,.8)'; 
+    setTimeout(()=> el.style.boxShadow='', 900); 
+  } 
+}
 
 // ---------- Text linkify ----------
-function linkify(text, selfId){ let out=text; all.forEach(k=>{ if(!k.name||k.id===selfId) return; const re=new RegExp('\\b'+escRe(k.name)+'\\b','gi'); out=out.replace(re, m=>`<span class="entity-link" onclick="focusOn(${k.id})">${m}</span>`); }); return out; }
+function linkify(text, selfId){ 
+  let out=text; 
+  all.forEach(k=>{ 
+    if(!k.name||k.id===selfId) return; 
+    const re=new RegExp('\\b'+escRe(k.name)+'\\b','gi'); 
+    out=out.replace(re, m=>`<span class="entity-link" onclick="focusOn(${k.id})">${m}</span>`); 
+  }); 
+  return out; 
+}
 
 // ---------- CRUD / toolbar ----------
-function createCard(x,y){ if(x==null) x=(innerWidth/2 - viewX)/zoom - 160; if(y==null) y=(innerHeight/2 - viewY)/zoom - 110; const c={id:nextId++,name:'Entity '+(nextId-1),type:'entity',content:'',attributes:[]}; all.push(c); const lay=ensureLayout(currentPlane); lay.cards.push({refId:c.id,x,y}); renderCard({refId:c.id,x,y}); updateHUD(); return c; }
-function deleteCard(id){ links.get(id)?.forEach(o=>links.get(o)?.delete(id)); links.delete(id); parentsOf.get(id)?.forEach(p=>childrenOf.get(p)?.delete(id)); parentsOf.delete(id); childrenOf.get(id)?.forEach(ch=>parentsOf.get(ch)?.delete(id)); childrenOf.delete(id); all=all.filter(c=>c.id!==id); layouts.forEach(l=> l.cards=l.cards.filter(v=>v.refId!==id)); document.getElementById('card-'+id)?.remove(); selected.delete(id); updateHUD(); }
-function deleteSelected(){ [...selected].forEach(deleteCard); }
-function resetView(){ viewX=0; viewY=0; zoom=1; updateView(); updateHUD(); }
+function createCard(x,y){ 
+  if(x==null) x=(innerWidth/2 - viewX)/zoom - 160; 
+  if(y==null) y=(innerHeight/2 - viewY)/zoom - 110; 
+  const c={id:nextId++,name:'Entity '+(nextId-1),type:'entity',content:'',attributes:[]}; 
+  all.push(c); 
+  const lay=ensureLayout(currentPlane); 
+  const newCard = {refId:c.id,x,y};
+  lay.cards.push(newCard); 
+  // FIX: Also add to clones array so drag works immediately
+  clones.push({refId:c.id,x,y});
+  renderCard(newCard); 
+  updateHUD(); 
+  return c; 
+}
 
-// ---------- Seed + first render (names set before render) ----------
+function deleteCard(id){ 
+  links.get(id)?.forEach(o=>links.get(o)?.delete(id)); 
+  links.delete(id); 
+  parentsOf.get(id)?.forEach(p=>childrenOf.get(p)?.delete(id)); 
+  parentsOf.delete(id); 
+  childrenOf.get(id)?.forEach(ch=>parentsOf.get(ch)?.delete(id)); 
+  childrenOf.delete(id); 
+  all=all.filter(c=>c.id!==id); 
+  layouts.forEach(l=> l.cards=l.cards.filter(v=>v.refId!==id)); 
+  document.getElementById('card-'+id)?.remove(); 
+  selected.delete(id); 
+  updateHUD(); 
+}
+
+function deleteSelected(){ 
+  [...selected].forEach(deleteCard); 
+}
+
+function resetView(){ 
+  viewX=0; 
+  viewY=0; 
+  zoom=1; 
+  updateView(); 
+  updateHUD(); 
+}
+
+// ---------- Seed + first render ----------
 (function seed(){
   const a={id:nextId++,name:'Sarah Chen',type:'Actor',content:'A marine biologist studying deep-sea creatures. She works at The Research Station and is concerned about the Strange Readings.',attributes:[{key:'Role',value:'Lead scientist',kind:'text'}]};
   const b={id:nextId++,name:'The Research Station',type:'Location',content:'A remote underwater facility 200 meters below the Pacific Ocean surface. Sarah Chen conducts her research here.',attributes:[]};
   const d={id:nextId++,name:'Strange Readings',type:'Event',content:'Sonar equipment detects unusual patterns below The Research Station. Sarah Chen is investigating.',attributes:[]};
   all.push(a,b,d);
-  ensure(childrenOf,a.id); ensure(childrenOf,b.id); ensure(childrenOf,d.id);
+  ensure(childrenOf,a.id); 
+  ensure(childrenOf,b.id); 
+  ensure(childrenOf,d.id);
   // links for demo
-  ensure(links,a.id).add(b.id); ensure(links,b.id).add(a.id); ensure(links,a.id).add(d.id); ensure(links,d.id).add(a.id); ensure(links,b.id).add(d.id); ensure(links,d.id).add(b.id);
+  ensure(links,a.id).add(b.id); 
+  ensure(links,b.id).add(a.id); 
+  ensure(links,a.id).add(d.id); 
+  ensure(links,d.id).add(a.id); 
+  ensure(links,b.id).add(d.id); 
+  ensure(links,d.id).add(b.id);
   // root layout
-  const L=ensureLayout(null); L.cards=[{refId:a.id,x:120,y:110},{refId:b.id,x:430,y:150},{refId:d.id,x:240,y:320}];
-  renderPlane(null); // names render correctly immediately
+  const L=ensureLayout(null); 
+  L.cards=[{refId:a.id,x:120,y:110},{refId:b.id,x:430,y:150},{refId:d.id,x:240,y:320}];
+  renderPlane(null);
 })();
 
 // Expose minimal API
-window.createCard=createCard; window.deleteSelected=deleteSelected; window.resetView=resetView; window.deleteCard=deleteCard;
+window.createCard=createCard; 
+window.deleteSelected=deleteSelected; 
+window.resetView=resetView; 
+window.deleteCard=deleteCard;
+window.toggleSection=toggleSection;
+window.focusOn=focusOn;
