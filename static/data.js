@@ -102,33 +102,63 @@ export function linearParents(id) {
 }
 
 export function effectiveAttrs(id) { 
+  console.log(`[effectiveAttrs] Getting effective attributes for card ${id}`);
   const me = byId(id); 
   const out = []; 
   const ownKeys = new Set((me.attributes || []).map(a => a.key)); 
   
+  console.log(`[effectiveAttrs] Card's own attributes:`, me.attributes);
+  console.log(`[effectiveAttrs] Own attribute keys:`, Array.from(ownKeys));
+  
   // Add own attributes
-  (me.attributes || []).forEach(a => out.push({...a, inherited: false})); 
+  (me.attributes || []).forEach(a => {
+    console.log(`[effectiveAttrs] Adding own attribute:`, a);
+    out.push({...a, inherited: false});
+  }); 
   
   // Add inherited attributes
-  linearParents(id).forEach(pid => { 
+  const parents = linearParents(id);
+  console.log(`[effectiveAttrs] Parent IDs:`, parents);
+  
+  parents.forEach(pid => { 
     const p = byId(pid); 
-    if (!p) return; 
+    if (!p) {
+      console.log(`[effectiveAttrs] Parent ${pid} not found`);
+      return;
+    }
+    console.log(`[effectiveAttrs] Processing parent ${pid} attributes:`, p.attributes);
     (p.attributes || []).forEach(a => { 
       if (!ownKeys.has(a.key)) {
+        console.log(`[effectiveAttrs] Adding inherited attribute from parent ${pid}:`, a);
         out.push({...a, inherited: true, source: pid}); 
+      } else {
+        console.log(`[effectiveAttrs] Skipping inherited attribute (overridden):`, a.key);
       }
     }); 
   }); 
   
+  console.log(`[effectiveAttrs] Final effective attributes:`, out);
   return out; 
 }
 
 // Only search linked entities for attribute values
 export function resolveEntityByNameFromLinked(name, cardId) { 
-  if (!name) return null; 
+  console.log(`[ResolveEntity] Looking for "${name}" in linked entities of card ${cardId}`);
+  if (!name) {
+    console.log(`[ResolveEntity] Empty name, returning null`);
+    return null; 
+  }
   const n = name.trim().toLowerCase(); 
   const linkedIds = Array.from(links.get(cardId) || new Set());
-  return linkedIds.map(id => byId(id)).find(e => e && (e.name || '').trim().toLowerCase() === n) || null; 
+  console.log(`[ResolveEntity] Linked IDs for card ${cardId}:`, linkedIds);
+  
+  const linkedEntities = linkedIds.map(id => byId(id)).filter(Boolean);
+  console.log(`[ResolveEntity] Linked entities:`, linkedEntities.map(e => ({id: e.id, name: e.name})));
+  
+  const match = linkedEntities.find(e => e && (e.name || '').trim().toLowerCase() === n);
+  console.log(`[ResolveEntity] Match result:`, match ? {id: match.id, name: match.name} : 'no match');
+  
+  return match || null; 
 }
 
 // ---------- Query Functions ----------

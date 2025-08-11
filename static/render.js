@@ -94,8 +94,6 @@ export function renderCard(v) {
         <span class="caret down" id="caret-links-${c.id}">▶</span> Linked Entities
       </div>
       <div class="link-list" id="links-${c.id}">${renderLinks(c.id)}</div>
-
-      <datalist id="dl-${c.id}">${getLinkedEntitiesOptions(c.id)}</datalist>
     </div>`;
   
   const plane = document.getElementById('plane');
@@ -104,13 +102,13 @@ export function renderCard(v) {
   // Note: Event handlers will be attached by interaction.js
 }
 
-// Get options only from linked entities
+// Get options only from linked entities - NO LONGER NEEDED
 export function getLinkedEntitiesOptions(cardId) {
   const linkedIds = Array.from(data.links.get(cardId) || new Set());
   return linkedIds.map(id => data.byId(id)).filter(Boolean).map(e => `<option value="${escAttr(e.name)}">`).join('');
 }
 
-// Proper attribute row rendering with empty row when needed
+// Proper attribute row rendering with custom dropdown
 export function renderAttrRows(card) {
   const attrs = data.effectiveAttrs(card.id);
   
@@ -118,7 +116,10 @@ export function renderAttrRows(card) {
   if (attrs.length === 0) {
     return `<div class="attr-row" data-idx="0">
       <input class="attr-key" value="" placeholder="key">
-      <input class="attr-val" list="dl-${card.id}" value="" placeholder="value">
+      <div class="attr-dropdown-wrapper">
+        <input class="attr-val" value="" placeholder="value" autocomplete="off">
+        <div class="attr-dropdown" id="dropdown-${card.id}-0"></div>
+      </div>
     </div>`;
   }
   
@@ -128,7 +129,10 @@ export function renderAttrRows(card) {
     const ent = a.kind === 'entity';
     return `<div class="attr-row ${inh ? 'inherited' : ''}" data-idx="${i}" ${inh ? 'data-inh="1"' : ''}>
       <input class="attr-key" ${inh ? 'readonly' : ''} value="${escAttr(a.key || '')}" placeholder="key">
-      <input class="attr-val ${ent ? 'entity' : ''}" ${inh ? 'readonly' : ''} ${inh ? '' : `list="dl-${card.id}"`} value="${escAttr(ent ? (data.byId(a.entityId)?.name || a.value) : (a.value || ''))}" placeholder="value">
+      <div class="attr-dropdown-wrapper">
+        <input class="attr-val ${ent ? 'entity' : ''}" ${inh ? 'readonly' : ''} value="${escAttr(ent ? (data.byId(a.entityId)?.name || a.value) : (a.value || ''))}" placeholder="value" autocomplete="off">
+        ${!inh ? `<div class="attr-dropdown" id="dropdown-${card.id}-${i}"></div>` : ''}
+      </div>
     </div>`;
   }).join('');
   
@@ -143,7 +147,7 @@ export function renderLinks(cardId) {
 
 // ---------- UI Updates ----------
 export function updateCardUI(cardId, focusNew = false) { 
-  console.log(`[updateCardUI] Starting update for card ${cardId}`);
+  console.log(`[updateCardUI] Starting update for card ${cardId}, focusNew: ${focusNew}`);
   const c = data.byId(cardId); 
   const el = document.getElementById('card-' + cardId); 
   if (!c || !el) {
@@ -151,28 +155,41 @@ export function updateCardUI(cardId, focusNew = false) {
     return;
   }
   
+  console.log(`[updateCardUI] Card data:`, {
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    attributes: c.attributes
+  });
   console.log(`[updateCardUI] Current links for card ${cardId}:`, Array.from(data.links.get(cardId) || new Set()));
   
   el.querySelector('.card-title').textContent = c.name; 
   el.querySelector('.card-type').textContent = c.type || 'entity'; 
   
   console.log(`[updateCardUI] Updating HTML for card ${cardId}`);
-  el.querySelector('#attrs-' + cardId).innerHTML = renderAttrRows(c); 
+  console.log(`[updateCardUI] About to render attributes:`, c.attributes);
+  
+  const oldAttrsHTML = el.querySelector('#attrs-' + cardId).innerHTML;
+  const newAttrsHTML = renderAttrRows(c);
+  
+  if (oldAttrsHTML !== newAttrsHTML) {
+    console.log(`[updateCardUI] Attributes HTML changed, updating`);
+    el.querySelector('#attrs-' + cardId).innerHTML = newAttrsHTML;
+  } else {
+    console.log(`[updateCardUI] Attributes HTML unchanged`);
+  }
+  
   el.querySelector('#links-' + cardId).innerHTML = renderLinks(cardId); 
   el.querySelector('#txt-' + cardId).innerHTML = linkify(esc(c.content || ''), cardId); 
   
-  // Update datalist with linked entities only
-  const dl = el.querySelector('#dl-' + cardId); 
-  if (dl) { 
-    dl.innerHTML = getLinkedEntitiesOptions(cardId); 
-  } 
-  
   // Re-hydrate the card
+  console.log(`[updateCardUI] Re-hydrating card ${cardId}`);
   if (typeof window.hydrateCard === 'function') {
     window.hydrateCard(cardId);
   }
   
   if (focusNew) { 
+    console.log(`[updateCardUI] Focusing new row`);
     const rows = el.querySelectorAll('#attrs-' + cardId + ' .attr-row'); 
     const last = rows[rows.length - 1]; 
     last?.querySelector('.attr-key')?.focus(); 
