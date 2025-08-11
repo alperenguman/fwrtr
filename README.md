@@ -1,5 +1,5 @@
 
-![alt text](https://github.com/alperenguman/strywrtr/raw/master/static/logo.png "fractal wrtr")
+![alt text](static/logo.png "fractal wrtr")
 
 # fractal wrtr
 
