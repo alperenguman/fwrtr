@@ -1,109 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Strywrtr</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-    
-    <!-- Load CSS modules -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='leftPane.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='entityDetails.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='entityEditor.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='storyUI.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strywrtr · Cards · Inheritance & Linking</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-    <div class="container">
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-title">In This Scene</div>
-                <div class="scene-info" id="sceneInfo">Scene 1</div>
-                <div id="entityCount" class="loading">Loading...</div>
-            </div>
-            <div class="entity-list" id="entityList">
-            </div>
-        </div>
+  <div class="plane-container" id="plane"></div>
 
-        <div class="chat-container">
-            <div class="chat-header">
-                <h1>Strywrtr</h1>
-                <div class="header-actions">
-                    <span id="toggleSystemMessages" class="header-icon" title="Toggle system messages">🛈</span>
-                    <span id="toggleUserMessages" class="header-icon" title="Toggle user prompts">🙍</span>
-                    <span id="toggleAutoEval" class="header-icon" title="Toggle auto evaluation">✨</span>
-                </div>
-            </div>
-            
-            <div class="chat-messages" id="chatMessages">
-                <div class="message system">
-                    <div class="loading">Loading story...</div>
-                </div>
-            </div>
-            
-            <!-- Entity Editor View -->
-            <div class="entity-editor" id="entityEditor" style="display: none;">
-                <div class="editor-header">
-                    <div class="editor-title">
-                        <span class="editor-entity-name" id="editorEntityName">Entity Name</span>
-                        <span class="editor-entity-type" id="editorEntityType">type/base_type</span>
-                    </div>
-                    <div class="editor-actions">
-                        <button class="editor-btn save-btn" id="saveEntityBtn">Save Changes</button>
-                        <button class="editor-btn cancel-btn" id="cancelEntityBtn">Cancel</button>
-                    </div>
-                </div>
-                
-                <div class="editor-content" id="editorContent">
-                    <!-- Editor cards will be inserted here -->
-                </div>
-            </div>
-            
-            <div class="chat-input">
-                <div class="input-container">
-                    <input type="text" id="messageInput" placeholder="Continue the story or ask about entities..." disabled>
-                    <button class="send-btn" id="sendButton" disabled>Send</button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="detail-pane" id="detailPane">
-            <div class="detail-header">
-                <div class="detail-title" id="detailTitle">Entity Details</div>
-                <div class="detail-actions">
-                    <button class="edit-entity-btn" id="editEntityBtn" title="Edit Entity">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                    </button>
-                    <button class="close-detail" id="closeDetailButton">&times;</button>
-                </div>
-            </div>
-            
-            <div class="detail-toggles">
-                <h4>Show/Hide Sections</h4>
-                <div class="toggle-buttons">
-                    <button class="toggle-btn active" data-section="form">Form</button>
-                    <button class="toggle-btn active" data-section="function">Function</button>
-                    <button class="toggle-btn active" data-section="character">Character</button>
-                    <button class="toggle-btn active" data-section="goal">Goal</button>
-                    <button class="toggle-btn active" data-section="history">History</button>
-                    <button class="toggle-btn active" data-section="attributes">Attrs</button>
-                </div>
-            </div>
-            
-            <div class="detail-content" id="detailContent">
-            </div>
-        </div>
-    </div>
-    
-    <!-- Load JavaScript modules in dependency order -->
-    <script src="{{ url_for('static', filename='leftPane.js') }}"></script>
-    <script src="{{ url_for('static', filename='entityDetails.js') }}"></script>
-    <script src="{{ url_for('static', filename='entityEditor.js') }}"></script>
-    <script src="{{ url_for('static', filename='storyUI.js') }}"></script>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <div class="toolbar">
+    <button class="tool-btn" onclick="createCard()">New Card</button>
+    <button class="tool-btn" onclick="deleteSelected()">Delete</button>
+    <button class="tool-btn" onclick="resetView()">Reset View</button>
+  </div>
+
+  <div id="breadcrumb"></div>
+  <div class="coordinates" id="hud">X: 0, Y: 0 | Zoom: 1.0x | Cards: 0</div>
+  <div class="selection-box" id="lasso"></div>
+  <div id="backgroundText"></div>
+  <div id="planeLabel"></div>
+
+  <!-- Load modules - note the type="module" -->
+  <script type="module" src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 </html>
