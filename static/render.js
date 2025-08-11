@@ -141,8 +141,8 @@ export function renderAttrRows(card) {
 
 export function renderLinks(cardId) { 
   const set = data.links.get(cardId) || new Set(); 
-  if (!set.size) return '<div class="no-links" style="opacity:.6">No linked entities</div>'; 
-  return Array.from(set).map(id => `<div class="link-item" data-id="${id}">${esc(data.byId(id)?.name || '')}</div>`).join(''); 
+  if (!set.size) return '<div class="no-links" style="opacity:.6;font-size:11px">No linked entities<br><span style="opacity:.5;font-size:10px">Drag to bottom of another card to create link</span></div>'; 
+  return Array.from(set).map(id => `<div class="link-item" data-id="${id}" title="This card links to ${esc(data.byId(id)?.name || '')}">${esc(data.byId(id)?.name || '')}</div>`).join(''); 
 }
 
 // ---------- UI Updates ----------

@@ -12,7 +12,8 @@ let selecting = false, selStartX = 0, selStartY = 0;
 // ---------- Drag State ----------
 let dragging = false, dragStartX = 0, dragStartY = 0, dragIds = [];
 let hover = null;
-const LINK_ZONE = 40;
+const LINK_ZONE_HEIGHT = 60; // Increased from 40 for better usability
+const LINK_ZONE_VISUAL_FEEDBACK = true;
 
 // ---------- Plane Dragging ----------
 let draggingPlane = false, planeStartX = 0, planeStartY = 0;
@@ -44,6 +45,9 @@ export function startCardDrag(e) {
   const box = e.currentTarget; 
   const id = parseInt(box.id.split('-')[1]); 
   
+  console.log(`[startCardDrag] Starting drag for card ${id}`);
+  console.log(`[startCardDrag] Currently selected cards:`, Array.from(selected));
+  
   if (!selected.has(id)) { 
     selected.clear(); 
     document.querySelectorAll('.card.selected').forEach(n => n.classList.remove('selected')); 
@@ -57,12 +61,16 @@ export function startCardDrag(e) {
   dragStartY = coords.wy; 
   dragIds = [...selected]; 
   
+  console.log(`[startCardDrag] Dragging cards:`, dragIds);
+  console.log(`[startCardDrag] Start position:`, {x: dragStartX, y: dragStartY});
+  
   dragIds.forEach(cid => { 
     const ix = viewport.clones.findIndex(v => v.refId === cid); 
     const el = document.getElementById('card-' + cid); 
     if (ix >= 0 && el) { 
       el._ix = viewport.clones[ix].x; 
       el._iy = viewport.clones[ix].y; 
+      console.log(`[startCardDrag] Card ${cid} initial position:`, {x: el._ix, y: el._iy});
     } 
   }); 
 }
@@ -75,6 +83,12 @@ document.addEventListener('mousemove', e => {
   if (dragging) { 
     const dx = wx - dragStartX, dy = wy - dragStartY; 
     
+    // Only log every 10th mousemove to avoid spam
+    if (Math.random() < 0.1) {
+      console.log(`[mousemove] Dragging active, delta:`, {dx, dy});
+      console.log(`[mousemove] dragIds:`, dragIds);
+    }
+    
     dragIds.forEach(cid => { 
       const ix = viewport.clones.findIndex(v => v.refId === cid); 
       const el = document.getElementById('card-' + cid); 
@@ -84,26 +98,62 @@ document.addEventListener('mousemove', e => {
         viewport.setClonePosition(cid, newX, newY);
         el.style.setProperty('--x', newX + 'px'); 
         el.style.setProperty('--y', newY + 'px'); 
+        
+        // Add dragging class for visual feedback
+        if (!el.classList.contains('dragging')) {
+          el.classList.add('dragging');
+          console.log(`[mousemove] Added dragging class to card ${cid}`);
+        }
       } 
     }); 
     
-    // Better hover detection
+    // Better hover detection with link zone
+    // Temporarily hide dragged cards to detect what's underneath
+    const draggedElements = dragIds.map(id => document.getElementById('card-' + id)).filter(Boolean);
+    draggedElements.forEach(el => el.style.pointerEvents = 'none');
+    
     const t = document.elementFromPoint(e.clientX, e.clientY)?.closest('.card'); 
     
+    // Restore pointer events
+    draggedElements.forEach(el => el.style.pointerEvents = '');
+    
+    // Clear previous hover state
     if (hover && t !== hover) { 
-      hover.classList.remove('drop-target', 'link-zone'); 
+      console.log(`[mousemove] Clearing hover state from card ${hover.id}`);
+      hover.classList.remove('drop-target', 'link-zone', 'contain-zone'); 
     } 
     
-    hover = (t && !dragIds.includes(parseInt(t.id.split('-')[1]))) ? t : null; 
+    // Check if hovering over a valid target (not one of the dragged cards)
+    const newHoverId = t ? parseInt(t.id.split('-')[1]) : null;
+    const isValidTarget = t && !dragIds.includes(newHoverId);
+    
+    if (t && !isValidTarget) {
+      console.log(`[mousemove] Hovering over dragged card ${newHoverId}, ignoring`);
+    }
+    
+    hover = isValidTarget ? t : null; 
     
     if (hover) { 
       const r = hover.getBoundingClientRect(); 
+      const hoverCardId = parseInt(hover.id.split('-')[1]);
+      
       // Check if we're in the link zone (bottom portion)
-      if (e.clientY > r.bottom - LINK_ZONE) {
-        hover.classList.add('drop-target', 'link-zone'); 
+      const inLinkZone = e.clientY > r.bottom - LINK_ZONE_HEIGHT;
+      
+      console.log(`[mousemove] Hovering over card ${hoverCardId}`);
+      console.log(`[mousemove] Mouse Y: ${e.clientY}, Card bottom: ${r.bottom}, Link zone start: ${r.bottom - LINK_ZONE_HEIGHT}`);
+      console.log(`[mousemove] In link zone: ${inLinkZone}, LINK_ZONE_HEIGHT: ${LINK_ZONE_HEIGHT}`);
+      
+      // Visual feedback based on zone
+      if (inLinkZone) {
+        hover.classList.remove('contain-zone');
+        hover.classList.add('drop-target', 'link-zone');
+        console.log(`[mousemove] Applied link-zone classes to card ${hoverCardId}`);
       } else {
-        hover.classList.add('drop-target'); 
-        hover.classList.remove('link-zone'); 
+        // Contain zone (rest of the card)
+        hover.classList.remove('link-zone');
+        hover.classList.add('drop-target', 'contain-zone');
+        console.log(`[mousemove] Applied contain-zone classes to card ${hoverCardId}`);
       }
     } 
   } 
@@ -130,39 +180,115 @@ document.addEventListener('mousemove', e => {
 
 // ---------- Mouse Up Handler ----------
 document.addEventListener('mouseup', e => { 
+  console.log(`[mouseup] Mouse up event, dragging: ${dragging}, hover: ${hover ? hover.id : 'none'}`);
+  
   if (dragging) { 
+    console.log(`[mouseup] Ending drag, dragIds:`, dragIds);
     viewport.saveCurrentLayout(); 
+    
+    // Remove dragging class from all dragged cards
+    dragIds.forEach(cid => {
+      const el = document.getElementById('card-' + cid);
+      if (el) {
+        el.classList.remove('dragging');
+        console.log(`[mouseup] Removed dragging class from card ${cid}`);
+      }
+    });
     
     if (hover && dragIds.length > 0) { 
       const targetId = parseInt(hover.id.split('-')[1]); 
       const sourceId = dragIds[0]; // Use first selected card
       
+      console.log(`[mouseup] Drop detected!`);
+      console.log(`[mouseup] Source card: ${sourceId}, Target card: ${targetId}`);
+      console.log(`[mouseup] Hover element classes:`, hover.className);
+      
       if (targetId && sourceId && targetId !== sourceId) { 
         const r = hover.getBoundingClientRect(); 
+        const inLinkZone = e.clientY > r.bottom - LINK_ZONE_HEIGHT;
+        
+        console.log(`[mouseup] Drop position analysis:`);
+        console.log(`  Mouse Y: ${e.clientY}`);
+        console.log(`  Card bottom: ${r.bottom}`);
+        console.log(`  Link zone starts at: ${r.bottom - LINK_ZONE_HEIGHT}`);
+        console.log(`  LINK_ZONE_HEIGHT: ${LINK_ZONE_HEIGHT}`);
+        console.log(`  In link zone: ${inLinkZone}`);
         
         // Determine action based on drop position
-        if (e.clientY > r.bottom - LINK_ZONE) {
-          // Link the entities
-          data.link(sourceId, targetId); 
+        if (inLinkZone) {
+          // Link the entities - TARGET gets link to SOURCE (dragged card appears in target's links)
+          console.log(`[mouseup] LINKING: card ${targetId} will show card ${sourceId} in its links`);
+          
+          // Check current links before
+          console.log(`[mouseup] Before link - Target ${targetId} links:`, Array.from(data.links.get(targetId) || new Set()));
+          
+          data.link(targetId, sourceId); // REVERSED - target links to source
+          
+          // Check current links after
+          console.log(`[mouseup] After link - Target ${targetId} now links to:`, Array.from(data.links.get(targetId) || new Set()));
+          
+          // Visual feedback - flash both cards
+          const sourceEl = document.getElementById('card-' + sourceId);
+          const targetEl = document.getElementById('card-' + targetId);
+          
+          if (sourceEl) {
+            sourceEl.style.boxShadow = '0 0 30px rgba(0,255,136,.8)';
+            setTimeout(() => sourceEl.style.boxShadow = '', 400);
+            console.log(`[mouseup] Applied link flash to source card ${sourceId}`);
+          }
+          if (targetEl) {
+            targetEl.style.boxShadow = '0 0 30px rgba(0,255,136,.8)';
+            setTimeout(() => targetEl.style.boxShadow = '', 400);
+            console.log(`[mouseup] Applied link flash to target card ${targetId}`);
+          }
         } else {
-          // Contain: make source a child of target
+          // Contain: make source a child of target (but keep it visible on current plane too)
+          console.log(`[mouseup] CONTAINING card ${sourceId} inside card ${targetId}`);
+          console.log(`[mouseup] Card will be mirrored (visible on both planes)`);
+          
           data.contain(targetId, sourceId); 
-          // Remove from current plane and re-render
-          const lay = viewport.ensureLayout(viewport.currentPlane);
-          lay.cards = lay.cards.filter(v => v.refId !== sourceId);
-          render.renderPlane(viewport.currentPlane);
+          
+          // DON'T remove from current plane - keep it visible here
+          // Just update the containment relationship
+          console.log(`[mouseup] Card ${sourceId} is now child of ${targetId} but remains visible on current plane`);
+          
+          // Visual feedback - flash container
+          const targetEl = document.getElementById('card-' + targetId);
+          if (targetEl) {
+            targetEl.style.boxShadow = '0 0 30px rgba(255,90,90,.8)';
+            setTimeout(() => targetEl.style.boxShadow = '', 400);
+            console.log(`[mouseup] Applied contain flash to target card ${targetId}`);
+          }
+          
+          // Visual feedback - also flash the contained card with a different color
+          const sourceEl = document.getElementById('card-' + sourceId);
+          if (sourceEl) {
+            sourceEl.style.boxShadow = '0 0 20px rgba(255,90,90,.5)';
+            setTimeout(() => sourceEl.style.boxShadow = '', 400);
+            console.log(`[mouseup] Applied contained flash to source card ${sourceId}`);
+          }
+          
+          // Don't re-render the plane - card stays visible
         }
         
+        // Update both cards' UI to show the new relationship
+        console.log(`[mouseup] Updating UI for both cards`);
         render.updateCardUI(sourceId); 
         render.updateCardUI(targetId); 
-      } 
+      } else {
+        console.log(`[mouseup] Invalid drop - same card or missing IDs`);
+      }
       
-      hover.classList.remove('drop-target', 'link-zone'); 
+      console.log(`[mouseup] Clearing hover classes from card ${hover.id}`);
+      hover.classList.remove('drop-target', 'link-zone', 'contain-zone'); 
       hover = null; 
-    } 
+    } else {
+      console.log(`[mouseup] No valid drop target`);
+    }
     
     dragging = false; 
     dragIds = []; 
+    console.log(`[mouseup] Drag state reset`);
   }
   
   if (selecting) { 
@@ -495,6 +621,11 @@ export function hydrateCard(cardId) {
           // This is the empty row, ensure we have an empty attribute
           console.log(`[Commit] Ensuring empty attribute for empty row`);
           card.attributes = [{key: '', value: '', kind: 'text'}];
+        } else if (allRows.length === 1 && idx === 0 && (card.attributes || []).length === 1) {
+          // Single row being cleared - keep it but make it empty
+          console.log(`[Commit] Keeping single empty row`);
+          card.attributes[0] = {key: '', value: '', kind: 'text'};
+          // Don't update UI to avoid re-render loop
         }
         return; 
       }
@@ -584,14 +715,14 @@ export function hydrateCard(cardId) {
       e.preventDefault();
       e.stopPropagation();
       
-      console.log(`[contextmenu] Card ${cardId} unlinking from ${linkId}`);
+      console.log(`[contextmenu] Card ${cardId} removing link to ${linkId}`);
       
       data.unlink(cardId, linkId);
       this.remove();
       
       const remainingLinks = linksContainer.querySelectorAll('.link-item');
       if (remainingLinks.length === 0) {
-        linksContainer.innerHTML = '<div class="no-links" style="opacity:.6">No linked entities</div>';
+        linksContainer.innerHTML = '<div class="no-links" style="opacity:.6;font-size:11px">No linked entities<br><span style="opacity:.5;font-size:10px">Drag to bottom of another card to create link</span></div>';
       }
     });
     

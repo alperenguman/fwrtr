@@ -1,6 +1,9 @@
-# swrtr
 
-A real-time storytelling playground where every word is a live object. Creators improvise scenes, branch realities, and perfect showpiece moments without ever losing track of their world.
+![alt text](https://github.com/alperenguman/strywrtr/raw/master/static/logo.png "fractal wrtr")
+
+# fractal wrtr
+
+A real-time writing playground where every word is a live object.
 
 
 ## Classes

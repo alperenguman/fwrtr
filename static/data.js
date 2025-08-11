@@ -20,23 +20,20 @@ export const ensure = (map, k) => {
 // ---------- Linking / Containment Operations ----------
 export function link(a, b) { 
   if (a === b) return; 
-  console.log(`[link] Linking ${a} to ${b}`);
+  console.log(`[link] Creating one-way link from ${a} to ${b}`);
   ensure(links, a).add(b); 
-  ensure(links, b).add(a); 
+  // Removed bidirectional linking - only a links to b now
   console.log(`[link] After linking - Card ${a} links:`, Array.from(links.get(a) || new Set()));
-  console.log(`[link] After linking - Card ${b} links:`, Array.from(links.get(b) || new Set()));
+  console.log(`[link] Card ${b} is not updated (one-way link)`);
 }
 
 export function unlink(a, b) { 
-  console.log(`[unlink] Unlinking ${a} from ${b}`);
+  console.log(`[unlink] Removing one-way link from ${a} to ${b}`);
   console.log(`  Before - Card ${a} links:`, Array.from(links.get(a) || new Set()));
-  console.log(`  Before - Card ${b} links:`, Array.from(links.get(b) || new Set()));
   
   links.get(a)?.delete(b); 
-  links.get(b)?.delete(a); 
   
   console.log(`  After - Card ${a} links:`, Array.from(links.get(a) || new Set()));
-  console.log(`  After - Card ${b} links:`, Array.from(links.get(b) || new Set()));
 }
 
 export function contain(parent, child) { 
@@ -163,10 +160,13 @@ export function resolveEntityByNameFromLinked(name, cardId) {
 
 // ---------- Query Functions ----------
 export function roots() { 
-  return all.filter(c => !(parentsOf.get(c.id) || new Set()).size).map(c => c.id); 
+  // Return ALL cards when on root plane - including those with parents (for mirroring)
+  return all.map(c => c.id); 
 }
 
 export function visibleIds(currentPlane) { 
+  // On root plane: show ALL cards (including contained ones for mirroring)
+  // On sub-plane: show only direct children
   return currentPlane == null ? roots() : Array.from(childrenOf.get(currentPlane) || new Set()); 
 }
 
@@ -203,12 +203,16 @@ export function seed() {
   ensure(childrenOf, b.id); 
   ensure(childrenOf, d.id);
   
-  // Create demo links
+  // Create demo one-way links
+  // Sarah links to Research Station and Strange Readings
   ensure(links, a.id).add(b.id); 
-  ensure(links, b.id).add(a.id); 
   ensure(links, a.id).add(d.id); 
-  ensure(links, d.id).add(a.id); 
+  
+  // Research Station links to Strange Readings
   ensure(links, b.id).add(d.id); 
+  
+  // Strange Readings links to Sarah and Research Station
+  ensure(links, d.id).add(a.id);
   ensure(links, d.id).add(b.id);
   
   return {a, b, d};

@@ -14,9 +14,46 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,Seg
   transform-origin:top left;border-radius:0;box-shadow:0 8px 32px rgba(0,0,0,.55)}
 .card:hover{border-color:#2b2b2b;box-shadow:0 10px 40px rgba(0,0,0,.75)}
 .card.selected{border-color:#ff5a5a;box-shadow:0 0 0 1px rgba(255,90,90,.35),0 10px 40px rgba(0,0,0,.8);z-index:100}
-.card.dragging{z-index:1000;box-shadow:0 18px 48px rgba(0,0,0,.9)}
-.card.drop-target{outline:1px dashed #00ff88}
-.card.link-zone{box-shadow:inset 0 -64px 64px -64px rgba(0,255,136,.18)}
+
+/* Card drag states */
+.card.dragging{z-index:1000;box-shadow:0 18px 48px rgba(0,0,0,.9);opacity:0.9}
+.card.drop-target{outline:2px solid #00ff88;outline-offset:2px}
+.card.link-zone{outline:2px solid #00ff88;outline-offset:2px}
+.card.link-zone::after{
+  content:'Link Entities';
+  position:absolute;
+  bottom:8px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#00ff88;
+  color:#000;
+  padding:4px 12px;
+  font-size:11px;
+  font-weight:700;
+  border-radius:0;
+  pointer-events:none;
+  z-index:1001;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+.card.contain-zone{outline:2px solid #ff5a5a;outline-offset:2px}
+.card.contain-zone::after{
+  content:'Contain Entity';
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%, -50%);
+  background:#ff5a5a;
+  color:#fff;
+  padding:4px 12px;
+  font-size:11px;
+  font-weight:700;
+  border-radius:0;
+  pointer-events:none;
+  z-index:1001;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
 
 .card-header{background:#0d0d0d;padding:10px 12px;border-bottom:1px solid #191919;font-weight:800;font-size:13px;display:flex;justify-content:space-between;align-items:center}
 .card-title{color:#e6e6e6;font-weight:900;letter-spacing:.2px}
@@ -129,6 +166,29 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,Seg
 .link-item:hover{color:#7dffc8}
 .link-input{background:#0b0b0b;border:1px solid #222;color:#e6e6e6;border-radius:0;padding:2px 4px;font:inherit;line-height:1.3;outline:none}
 .link-input:focus{border-color:#ff5a5a}
+
+/* Link animation */
+@keyframes linkPulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.link-item.new-link {
+  animation: linkPulse 0.5s ease-out;
+}
+
+/* Link line preview */
+.link-preview-line {
+  position: fixed;
+  pointer-events: none;
+  z-index: 999;
+  stroke: #00ff88;
+  stroke-width: 2;
+  stroke-dasharray: 5, 5;
+  fill: none;
+  opacity: 0.6;
+}
 
 /* BG & labels */
 #backgroundText{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:52px;color:rgba(255,255,255,.05);max-width:80%;text-align:center;pointer-events:none;z-index:1;line-height:1.35;white-space:pre-wrap;display:none}
