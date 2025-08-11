@@ -1,7 +1,7 @@
 
 ![alt text](static/logo.png "fractal wrtr")
 
-# fractal wrtr
+# fwrtr
 
 A real-time writing playground where every word is a live object.
 
