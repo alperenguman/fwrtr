@@ -581,19 +581,24 @@ export function hydrateCard(cardId) {
       
       if (inh) { 
         console.log(`[Commit] Processing inherited attribute`);
-        if (!key && !val) {
-          console.log(`[Commit] Empty inherited attribute, returning`);
+        // For inherited attributes, we can set the value
+        if (!key) {
+          console.log(`[Commit] Empty inherited key, returning`);
           return;
         }
+        
+        // Check if this card already has this key in its own attributes
+        const existingIdx = (card.attributes || []).findIndex(a => a.key === key);
+        
         const match = data.resolveEntityByNameFromLinked(val, cardId); 
         console.log(`[Commit] Entity match for "${val}":`, match);
         const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'}; 
-        const ix = (card.attributes || []).findIndex(a => a.key === key); 
-        if (ix >= 0) {
-          console.log(`[Commit] Updating existing attribute at index ${ix}`);
-          card.attributes[ix] = newAttr; 
+        
+        if (existingIdx >= 0) {
+          console.log(`[Commit] Updating existing override at index ${existingIdx}`);
+          card.attributes[existingIdx] = newAttr; 
         } else { 
-          console.log(`[Commit] Adding new attribute`);
+          console.log(`[Commit] Adding new override for inherited key`);
           card.attributes = card.attributes || []; 
           card.attributes.push(newAttr); 
         } 
@@ -605,28 +610,33 @@ export function hydrateCard(cardId) {
       const idx = parseInt(row.dataset.idx);
       console.log(`[Commit] Processing non-inherited attribute at index ${idx}`);
       
+      // For non-inherited attributes, we need to map the index to actual attributes
+      // (skipping inherited ones in the display)
+      const nonInheritedAttrs = (card.attributes || []);
+      const actualIdx = Math.min(idx, nonInheritedAttrs.length);
+      
       // Handle empty rows
       if (!key && !val) { 
         console.log(`[Commit] Empty row detected`);
         const allRows = root.querySelectorAll('#attrs-' + cardId + ' .attr-row:not(.inherited)');
         console.log(`[Commit] Total non-inherited rows: ${allRows.length}`);
-        console.log(`[Commit] Current attributes length: ${(card.attributes || []).length}`);
+        console.log(`[Commit] Current non-inherited attributes: ${nonInheritedAttrs.length}`);
         
-        // Only remove if there are multiple rows OR this is an existing attribute
-        if (allRows.length > 1 && idx < (card.attributes || []).length) {
-          console.log(`[Commit] Removing attribute at index ${idx}`);
-          card.attributes.splice(idx, 1); 
-          render.updateCardUI(cardId); 
-        } else if (allRows.length === 1 && (card.attributes || []).length === 0) {
-          // This is the empty row, ensure we have an empty attribute
-          console.log(`[Commit] Ensuring empty attribute for empty row`);
-          card.attributes = [{key: '', value: '', kind: 'text'}];
-        } else if (allRows.length === 1 && idx === 0 && (card.attributes || []).length === 1) {
-          // Single row being cleared - keep it but make it empty
-          console.log(`[Commit] Keeping single empty row`);
-          card.attributes[0] = {key: '', value: '', kind: 'text'};
-          // Don't update UI to avoid re-render loop
+        // For deleting: check if this is an actual attribute that should be removed
+        if (actualIdx < nonInheritedAttrs.length) {
+          // This is an existing attribute being cleared - remove it
+          console.log(`[Commit] Removing attribute at actual index ${actualIdx}`);
+          card.attributes.splice(actualIdx, 1); 
+          render.updateCardUI(cardId); // This will cascade to children
+          return;
         }
+        
+        // If it's the only empty row and no attributes exist, keep it as placeholder
+        if (allRows.length === 1 && nonInheritedAttrs.length === 0) {
+          console.log(`[Commit] Keeping single empty row as placeholder`);
+          return;
+        }
+        
         return; 
       }
       
@@ -635,8 +645,8 @@ export function hydrateCard(cardId) {
       
       if (!card.attributes) card.attributes = []; 
       const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'};
-      console.log(`[Commit] Setting attribute at index ${idx}:`, newAttr);
-      card.attributes[idx] = newAttr; 
+      console.log(`[Commit] Setting attribute at actual index ${actualIdx}:`, newAttr);
+      card.attributes[actualIdx] = newAttr; 
       
       // Add new row on Enter with content
       if (addNewRow && key && val) {
@@ -679,7 +689,8 @@ export function hydrateCard(cardId) {
       
       inp.addEventListener('blur', () => commit(false)); 
       
-      if (inh) { 
+      // Note: inherited keys are readonly but values are editable
+      if (inh && inp === k) { 
         inp.addEventListener('focus', () => inp.removeAttribute('readonly'), {once: true}); 
       }
       

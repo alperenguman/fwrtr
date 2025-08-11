@@ -127,10 +127,13 @@ export function renderAttrRows(card) {
   const rows = attrs.map((a, i) => {
     const inh = a.inherited; 
     const ent = a.kind === 'entity';
+    const keyPlaceholder = inh ? `${a.key} (from ${a.sourceCardName || 'parent'})` : 'key';
+    const valuePlaceholder = inh ? 'set value' : 'value';
+    
     return `<div class="attr-row ${inh ? 'inherited' : ''}" data-idx="${i}" ${inh ? 'data-inh="1"' : ''}>
-      <input class="attr-key" ${inh ? 'readonly' : ''} value="${escAttr(a.key || '')}" placeholder="key">
+      <input class="attr-key" ${inh ? 'readonly' : ''} value="${escAttr(a.key || '')}" placeholder="${keyPlaceholder}" title="${inh ? `Inherited from ${a.sourceCardName || 'parent'}` : ''}">
       <div class="attr-dropdown-wrapper">
-        <input class="attr-val ${ent ? 'entity' : ''}" ${inh ? 'readonly' : ''} value="${escAttr(ent ? (data.byId(a.entityId)?.name || a.value) : (a.value || ''))}" placeholder="value" autocomplete="off">
+        <input class="attr-val ${ent ? 'entity' : ''}" value="${escAttr(ent ? (data.byId(a.entityId)?.name || a.value) : (a.value || ''))}" placeholder="${valuePlaceholder}" autocomplete="off">
         ${!inh ? `<div class="attr-dropdown" id="dropdown-${card.id}-${i}"></div>` : ''}
       </div>
     </div>`;
@@ -193,6 +196,17 @@ export function updateCardUI(cardId, focusNew = false) {
     const rows = el.querySelectorAll('#attrs-' + cardId + ' .attr-row'); 
     const last = rows[rows.length - 1]; 
     last?.querySelector('.attr-key')?.focus(); 
+  }
+  
+  // CASCADE UPDATE TO CHILDREN - Update all children that inherit from this card
+  console.log(`[updateCardUI] Checking for children to cascade update`);
+  const children = data.childrenOf.get(cardId);
+  if (children && children.size > 0) {
+    console.log(`[updateCardUI] Cascading update to ${children.size} children:`, Array.from(children));
+    children.forEach(childId => {
+      // Recursively update children (this will also update their children, etc.)
+      updateCardUI(childId, false);
+    });
   }
   
   console.log(`[updateCardUI] Completed update for card ${cardId}`);

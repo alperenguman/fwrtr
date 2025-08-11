@@ -8,7 +8,7 @@ export const byId = id => all.find(c => c.id === id);
 
 // ---------- Relationships ----------
 export const parentsOf = new Map();   // child -> Set(parent)
-export const childrenOf = new Map();  // parent -> Set(child)
+export const childrenOf = new Map();  // parent -> Set(child) - EXPORTED for cascade updates
 export const links = new Map();       // undirected influence graph
 
 // Helper to ensure Set exists in Map
@@ -101,35 +101,47 @@ export function linearParents(id) {
 export function effectiveAttrs(id) { 
   console.log(`[effectiveAttrs] Getting effective attributes for card ${id}`);
   const me = byId(id); 
+  if (!me) return [];
+  
   const out = []; 
   const ownKeys = new Set((me.attributes || []).map(a => a.key)); 
   
   console.log(`[effectiveAttrs] Card's own attributes:`, me.attributes);
   console.log(`[effectiveAttrs] Own attribute keys:`, Array.from(ownKeys));
   
-  // Add own attributes
+  // Add own attributes first
   (me.attributes || []).forEach(a => {
     console.log(`[effectiveAttrs] Adding own attribute:`, a);
     out.push({...a, inherited: false});
   }); 
   
-  // Add inherited attributes
+  // Get parent cards for inheritance
   const parents = linearParents(id);
   console.log(`[effectiveAttrs] Parent IDs:`, parents);
   
+  // Add inherited attributes from parents (keys only, not values)
   parents.forEach(pid => { 
     const p = byId(pid); 
     if (!p) {
       console.log(`[effectiveAttrs] Parent ${pid} not found`);
       return;
     }
-    console.log(`[effectiveAttrs] Processing parent ${pid} attributes:`, p.attributes);
+    console.log(`[effectiveAttrs] Processing parent ${pid} (${p.name}) attributes:`, p.attributes);
     (p.attributes || []).forEach(a => { 
-      if (!ownKeys.has(a.key)) {
-        console.log(`[effectiveAttrs] Adding inherited attribute from parent ${pid}:`, a);
-        out.push({...a, inherited: true, source: pid}); 
-      } else {
-        console.log(`[effectiveAttrs] Skipping inherited attribute (overridden):`, a.key);
+      if (!ownKeys.has(a.key) && a.key) {  // Only inherit if we don't already have this key
+        console.log(`[effectiveAttrs] Inheriting key "${a.key}" from parent ${pid}`);
+        // Inherit the key but with empty value - child sets its own value
+        out.push({
+          key: a.key, 
+          value: '', // Empty value - to be set by child
+          kind: 'text',
+          inherited: true, 
+          source: pid,
+          sourceCardName: p.name
+        }); 
+        ownKeys.add(a.key); // Prevent duplicate inherited keys
+      } else if (a.key) {
+        console.log(`[effectiveAttrs] Skipping inherited key "${a.key}" (already exists)`);
       }
     }); 
   }); 
