@@ -129,10 +129,17 @@ function renderAttrRows(card){
   return rows;
 }
 
-function renderLinks(cardId){ const set=links.get(cardId)||new Set(); if(!set.size) return '<div class="link-item" style="opacity:.6">No linked entities</div>'; return Array.from(set).map(id=>`<div class="link-item" data-id="${id}">${esc(byId(id)?.name||'')}</div>`).join(''); }
+function renderLinks(cardId){ 
+  const set=links.get(cardId)||new Set(); 
+  if(!set.size) return '<div class="no-links" style="opacity:.6">No linked entities</div>'; 
+  return Array.from(set).map(id=>`<div class="link-item" data-id="${id}">${esc(byId(id)?.name||'')}</div>`).join(''); 
+}
 
 // FIX 1: Enhanced attribute handling with Enter/Backspace
+let rightClickCounter = 0; // Track right-click events
+
 function hydrateCard(cardId){
+  console.log(`[hydrateCard] Starting hydration for card ${cardId}`);
   const root=document.getElementById('card-'+cardId); 
   if(!root) return; 
   const card=byId(cardId);
@@ -221,33 +228,73 @@ function hydrateCard(cardId){
     });
   });
 
-  // linked entities: click to edit, clear to unlink
-  root.querySelectorAll('#links-'+cardId+' .link-item').forEach(it=>{
-    it.addEventListener('click', ()=>{ 
-      const id=parseInt(it.dataset.id); 
+  // linked entities: Add handlers directly
+  const linksContainer = root.querySelector('#links-'+cardId);
+  if(!linksContainer) {
+    console.log(`[hydrateCard] No links container found for card ${cardId}`);
+    return;
+  }
+  
+  // Add handlers to each link item WITHOUT cloning
+  const linkItems = linksContainer.querySelectorAll('.link-item');
+  console.log(`[hydrateCard] Card ${cardId} has ${linkItems.length} linked items`);
+  
+  linkItems.forEach((it, idx) => {
+    // Skip if this doesn't have a valid data-id
+    if(!it.dataset.id || it.dataset.id === 'undefined') {
+      console.log(`  Skipping item ${idx} - invalid data-id: "${it.dataset.id}"`);
+      return;
+    }
+    
+    const linkId = parseInt(it.dataset.id);
+    console.log(`  Adding listeners to item ${idx} with data-id="${linkId}"`);
+    
+    // Right-click handler - just remove the DOM element, don't re-render everything
+    it.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      console.log(`[contextmenu] Card ${cardId} unlinking from ${linkId}`);
+      
+      // Update the data structure
+      unlink(cardId, linkId);
+      
+      // Just remove this element from DOM instead of re-rendering everything
+      this.remove();
+      
+      // If no more links, show the "No linked entities" message
+      const remainingLinks = linksContainer.querySelectorAll('.link-item');
+      if(remainingLinks.length === 0) {
+        linksContainer.innerHTML = '<div class="no-links" style="opacity:.6">No linked entities</div>';
+      }
+    });
+    
+    // Left-click handler for editing
+    it.addEventListener('click', function() { 
+      console.log(`[click] Edit mode for card ${cardId} link to ${linkId}`);
       const input=document.createElement('input'); 
       input.className='link-input'; 
-      // Don't use datalist for link editing - these are already linked
-      input.value=it.textContent.trim(); 
-      it.replaceWith(input); 
+      input.value=this.textContent.trim(); 
+      this.replaceWith(input); 
       input.focus(); 
       
       function end(){ 
         const name=(input.value||'').trim(); 
+        console.log(`[edit-end] Card ${cardId} editing link ${linkId}, new value: "${name}"`);
         if(!name){ 
-          unlink(cardId,id); 
+          unlink(cardId,linkId); 
           updateCardUI(cardId); 
           return; 
         } 
         // Search all entities for linking
         const match=all.find(e=> (e.name||'').trim().toLowerCase()===name.toLowerCase()); 
         if(!match){ 
-          unlink(cardId,id); 
+          unlink(cardId,linkId); 
           updateCardUI(cardId); 
           return; 
         } 
-        if(match.id!==id){ 
-          unlink(cardId,id); 
+        if(match.id!==linkId){ 
+          unlink(cardId,linkId); 
           link(cardId,match.id); 
         } 
         updateCardUI(cardId); 
@@ -262,15 +309,25 @@ function hydrateCard(cardId){
       input.addEventListener('blur', end); 
     });
   });
+  
+  console.log(`[hydrateCard] Completed hydration for card ${cardId}`);
 }
 
 function updateCardUI(cardId, focusNew=false){ 
+  console.log(`[updateCardUI] Starting update for card ${cardId}`);
   const c=byId(cardId); 
   const el=document.getElementById('card-'+cardId); 
-  if(!c||!el) return; 
+  if(!c||!el) {
+    console.log(`[updateCardUI] Card ${cardId} not found in data or DOM`);
+    return;
+  }
+  
+  console.log(`[updateCardUI] Current links for card ${cardId}:`, Array.from(links.get(cardId)||new Set()));
   
   el.querySelector('.card-title').textContent=c.name; 
   el.querySelector('.card-type').textContent=c.type||'entity'; 
+  
+  console.log(`[updateCardUI] Updating HTML for card ${cardId}`);
   el.querySelector('#attrs-'+cardId).innerHTML=renderAttrRows(c); 
   el.querySelector('#links-'+cardId).innerHTML=renderLinks(cardId); 
   el.querySelector('#txt-'+cardId).innerHTML=linkify(esc(c.content||''), cardId); 
@@ -281,6 +338,7 @@ function updateCardUI(cardId, focusNew=false){
     dl.innerHTML=getLinkedEntitiesOptions(cardId); 
   } 
   
+  console.log(`[updateCardUI] Calling hydrateCard for card ${cardId}`);
   hydrateCard(cardId); 
   
   if(focusNew){ 
@@ -288,6 +346,8 @@ function updateCardUI(cardId, focusNew=false){
     const last=rows[rows.length-1]; 
     last?.querySelector('.attr-key')?.focus(); 
   }
+  
+  console.log(`[updateCardUI] Completed update for card ${cardId}`);
 }
 
 // ---------- Drag / select ----------
@@ -491,13 +551,23 @@ document.addEventListener('mouseup', ()=>{
 // ---------- Linking / containment ----------
 function link(a,b){ 
   if(a===b) return; 
+  console.log(`[link] Linking ${a} to ${b}`);
   ensure(links,a).add(b); 
   ensure(links,b).add(a); 
+  console.log(`[link] After linking - Card ${a} links:`, Array.from(links.get(a)||new Set()));
+  console.log(`[link] After linking - Card ${b} links:`, Array.from(links.get(b)||new Set()));
 }
 
 function unlink(a,b){ 
+  console.log(`[unlink] Unlinking ${a} from ${b}`);
+  console.log(`  Before - Card ${a} links:`, Array.from(links.get(a)||new Set()));
+  console.log(`  Before - Card ${b} links:`, Array.from(links.get(b)||new Set()));
+  
   links.get(a)?.delete(b); 
   links.get(b)?.delete(a); 
+  
+  console.log(`  After - Card ${a} links:`, Array.from(links.get(a)||new Set()));
+  console.log(`  After - Card ${b} links:`, Array.from(links.get(b)||new Set()));
 }
 
 // FIX 2: Proper containment that establishes parent-child relationship
