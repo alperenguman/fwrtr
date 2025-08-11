@@ -1,8 +1,9 @@
-// ===== Strywrtr – Fixes v4 =====
+// ===== Strywrtr – Fixes v5 =====
 // • Fixed: Enter creates new attribute line, backspace removes empty lines
 // • Fixed: Drag & drop for containment and linking
 // • Fixed: Entity autocomplete limited to linked entities
 // • Fixed: Empty attribute row shows when section expanded with no attributes
+// • Updated: Left-click on linked entities jumps to them directly (no edit mode)
 
 // ---------- Data ----------
 let all = [];              // canonical cards
@@ -136,8 +137,6 @@ function renderLinks(cardId){
 }
 
 // FIX 1: Enhanced attribute handling with Enter/Backspace
-let rightClickCounter = 0; // Track right-click events
-
 function hydrateCard(cardId){
   console.log(`[hydrateCard] Starting hydration for card ${cardId}`);
   const root=document.getElementById('card-'+cardId); 
@@ -269,44 +268,12 @@ function hydrateCard(cardId){
       }
     });
     
-    // Left-click handler for editing
-    it.addEventListener('click', function() { 
-      console.log(`[click] Edit mode for card ${cardId} link to ${linkId}`);
-      const input=document.createElement('input'); 
-      input.className='link-input'; 
-      input.value=this.textContent.trim(); 
-      this.replaceWith(input); 
-      input.focus(); 
-      
-      function end(){ 
-        const name=(input.value||'').trim(); 
-        console.log(`[edit-end] Card ${cardId} editing link ${linkId}, new value: "${name}"`);
-        if(!name){ 
-          unlink(cardId,linkId); 
-          updateCardUI(cardId); 
-          return; 
-        } 
-        // Search all entities for linking
-        const match=all.find(e=> (e.name||'').trim().toLowerCase()===name.toLowerCase()); 
-        if(!match){ 
-          unlink(cardId,linkId); 
-          updateCardUI(cardId); 
-          return; 
-        } 
-        if(match.id!==linkId){ 
-          unlink(cardId,linkId); 
-          link(cardId,match.id); 
-        } 
-        updateCardUI(cardId); 
-      }
-      
-      input.addEventListener('keydown',e=>{ 
-        if(e.key==='Enter'){ 
-          e.preventDefault(); 
-          end(); 
-        }
-      }); 
-      input.addEventListener('blur', end); 
+    // Left-click handler - jump to linked entity
+    it.addEventListener('click', function(e) { 
+      e.preventDefault();
+      e.stopPropagation();
+      console.log(`[click] Card ${cardId} jumping to linked entity ${linkId}`);
+      focusOn(linkId);
     });
   });
   
