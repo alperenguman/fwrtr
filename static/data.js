@@ -149,11 +149,14 @@ export function effectiveAttrs(id) {
       
       console.log(`[effectiveAttrs]   INHERITING key="${parentAttr.key}" from ${p.name}`);
       
-      // Inherit the key but with empty value (unless we have an override)
+      // Check if we have a value for this inherited key
+      const myOverride = (me.attributes || []).find(a => a.key === parentAttr.key);
+      
       inheritedAttrs.push({
         key: parentAttr.key,
-        value: '', // Empty by default
-        kind: 'text',
+        value: myOverride ? myOverride.value : '', // Use our override value if we have one
+        kind: myOverride ? myOverride.kind : 'text',
+        entityId: myOverride ? myOverride.entityId : undefined,
         inherited: true,
         source: pid,
         sourceCardName: p.name
@@ -162,31 +165,11 @@ export function effectiveAttrs(id) {
     });
   });
   
-  // DON'T SORT - Keep inherited attributes in the order they were inherited
-  // This preserves the parent's order
-  
-  // Check if we have overrides for inherited attributes
-  inheritedAttrs.forEach(inheritedAttr => {
-    // Look for an override in our own attributes
-    const override = (me.attributes || []).find(a => a.key === inheritedAttr.key);
-    if (override) {
-      // We have an override - use our value
-      console.log(`[effectiveAttrs] Using override for "${inheritedAttr.key}": "${override.value}"`);
-      out.push({
-        ...inheritedAttr,
-        value: override.value,
-        kind: override.kind,
-        entityId: override.entityId
-      });
-    } else {
-      // No override - use inherited empty value
-      out.push(inheritedAttr);
-    }
-  });
+  // Add all inherited attributes first
+  out.push(...inheritedAttrs);
   
   // Then add our OWN attributes that aren't overrides
-  // Keep them in their original order
-  (me.attributes || []).forEach((a, idx) => {
+  (me.attributes || []).forEach((a) => {
     if (!inheritedKeys.has(a.key)) {
       // This is our own attribute, not an override
       console.log(`[effectiveAttrs] Adding own attribute: key="${a.key}", value="${a.value}"`);
@@ -243,7 +226,7 @@ export function seed() {
     name: 'Sarah Chen',
     type: 'Actor',
     content: 'A marine biologist studying deep-sea creatures. She works at The Research Station and is concerned about the Strange Readings.',
-    attributes: [{key: 'Role', value: 'Lead scientist', kind: 'text'}]
+    attributes: []
   };
   
   const b = {

@@ -45,9 +45,6 @@ export function startCardDrag(e) {
   const box = e.currentTarget; 
   const id = parseInt(box.id.split('-')[1]); 
   
-  console.log(`[startCardDrag] Starting drag for card ${id}`);
-  console.log(`[startCardDrag] Currently selected cards:`, Array.from(selected));
-  
   if (!selected.has(id)) { 
     selected.clear(); 
     document.querySelectorAll('.card.selected').forEach(n => n.classList.remove('selected')); 
@@ -61,16 +58,12 @@ export function startCardDrag(e) {
   dragStartY = coords.wy; 
   dragIds = [...selected]; 
   
-  console.log(`[startCardDrag] Dragging cards:`, dragIds);
-  console.log(`[startCardDrag] Start position:`, {x: dragStartX, y: dragStartY});
-  
   dragIds.forEach(cid => { 
     const ix = viewport.clones.findIndex(v => v.refId === cid); 
     const el = document.getElementById('card-' + cid); 
     if (ix >= 0 && el) { 
       el._ix = viewport.clones[ix].x; 
       el._iy = viewport.clones[ix].y; 
-      console.log(`[startCardDrag] Card ${cid} initial position:`, {x: el._ix, y: el._iy});
     } 
   }); 
 }
@@ -82,12 +75,6 @@ document.addEventListener('mousemove', e => {
   
   if (dragging) { 
     const dx = wx - dragStartX, dy = wy - dragStartY; 
-    
-    // Only log every 10th mousemove to avoid spam
-    if (Math.random() < 0.1) {
-      console.log(`[mousemove] Dragging active, delta:`, {dx, dy});
-      console.log(`[mousemove] dragIds:`, dragIds);
-    }
     
     dragIds.forEach(cid => { 
       const ix = viewport.clones.findIndex(v => v.refId === cid); 
@@ -102,7 +89,6 @@ document.addEventListener('mousemove', e => {
         // Add dragging class for visual feedback
         if (!el.classList.contains('dragging')) {
           el.classList.add('dragging');
-          console.log(`[mousemove] Added dragging class to card ${cid}`);
         }
       } 
     }); 
@@ -119,17 +105,12 @@ document.addEventListener('mousemove', e => {
     
     // Clear previous hover state
     if (hover && t !== hover) { 
-      console.log(`[mousemove] Clearing hover state from card ${hover.id}`);
       hover.classList.remove('drop-target', 'link-zone', 'contain-zone'); 
     } 
     
     // Check if hovering over a valid target (not one of the dragged cards)
     const newHoverId = t ? parseInt(t.id.split('-')[1]) : null;
     const isValidTarget = t && !dragIds.includes(newHoverId);
-    
-    if (t && !isValidTarget) {
-      console.log(`[mousemove] Hovering over dragged card ${newHoverId}, ignoring`);
-    }
     
     hover = isValidTarget ? t : null; 
     
@@ -140,20 +121,14 @@ document.addEventListener('mousemove', e => {
       // Check if we're in the link zone (bottom portion)
       const inLinkZone = e.clientY > r.bottom - LINK_ZONE_HEIGHT;
       
-      console.log(`[mousemove] Hovering over card ${hoverCardId}`);
-      console.log(`[mousemove] Mouse Y: ${e.clientY}, Card bottom: ${r.bottom}, Link zone start: ${r.bottom - LINK_ZONE_HEIGHT}`);
-      console.log(`[mousemove] In link zone: ${inLinkZone}, LINK_ZONE_HEIGHT: ${LINK_ZONE_HEIGHT}`);
-      
       // Visual feedback based on zone
       if (inLinkZone) {
         hover.classList.remove('contain-zone');
         hover.classList.add('drop-target', 'link-zone');
-        console.log(`[mousemove] Applied link-zone classes to card ${hoverCardId}`);
       } else {
         // Contain zone (rest of the card)
         hover.classList.remove('link-zone');
         hover.classList.add('drop-target', 'contain-zone');
-        console.log(`[mousemove] Applied contain-zone classes to card ${hoverCardId}`);
       }
     } 
   } 
@@ -180,10 +155,7 @@ document.addEventListener('mousemove', e => {
 
 // ---------- Mouse Up Handler ----------
 document.addEventListener('mouseup', e => { 
-  console.log(`[mouseup] Mouse up event, dragging: ${dragging}, hover: ${hover ? hover.id : 'none'}`);
-  
   if (dragging) { 
-    console.log(`[mouseup] Ending drag, dragIds:`, dragIds);
     viewport.saveCurrentLayout(); 
     
     // Remove dragging class from all dragged cards
@@ -191,7 +163,6 @@ document.addEventListener('mouseup', e => {
       const el = document.getElementById('card-' + cid);
       if (el) {
         el.classList.remove('dragging');
-        console.log(`[mouseup] Removed dragging class from card ${cid}`);
       }
     });
     
@@ -199,33 +170,14 @@ document.addEventListener('mouseup', e => {
       const targetId = parseInt(hover.id.split('-')[1]); 
       const sourceId = dragIds[0]; // Use first selected card
       
-      console.log(`[mouseup] Drop detected!`);
-      console.log(`[mouseup] Source card: ${sourceId}, Target card: ${targetId}`);
-      console.log(`[mouseup] Hover element classes:`, hover.className);
-      
       if (targetId && sourceId && targetId !== sourceId) { 
         const r = hover.getBoundingClientRect(); 
         const inLinkZone = e.clientY > r.bottom - LINK_ZONE_HEIGHT;
         
-        console.log(`[mouseup] Drop position analysis:`);
-        console.log(`  Mouse Y: ${e.clientY}`);
-        console.log(`  Card bottom: ${r.bottom}`);
-        console.log(`  Link zone starts at: ${r.bottom - LINK_ZONE_HEIGHT}`);
-        console.log(`  LINK_ZONE_HEIGHT: ${LINK_ZONE_HEIGHT}`);
-        console.log(`  In link zone: ${inLinkZone}`);
-        
         // Determine action based on drop position
         if (inLinkZone) {
           // Link the entities - TARGET gets link to SOURCE (dragged card appears in target's links)
-          console.log(`[mouseup] LINKING: card ${targetId} will show card ${sourceId} in its links`);
-          
-          // Check current links before
-          console.log(`[mouseup] Before link - Target ${targetId} links:`, Array.from(data.links.get(targetId) || new Set()));
-          
           data.link(targetId, sourceId); // REVERSED - target links to source
-          
-          // Check current links after
-          console.log(`[mouseup] After link - Target ${targetId} now links to:`, Array.from(data.links.get(targetId) || new Set()));
           
           // Visual feedback - flash both cards
           const sourceEl = document.getElementById('card-' + sourceId);
@@ -234,30 +186,20 @@ document.addEventListener('mouseup', e => {
           if (sourceEl) {
             sourceEl.style.boxShadow = '0 0 30px rgba(0,255,136,.8)';
             setTimeout(() => sourceEl.style.boxShadow = '', 400);
-            console.log(`[mouseup] Applied link flash to source card ${sourceId}`);
           }
           if (targetEl) {
             targetEl.style.boxShadow = '0 0 30px rgba(0,255,136,.8)';
             setTimeout(() => targetEl.style.boxShadow = '', 400);
-            console.log(`[mouseup] Applied link flash to target card ${targetId}`);
           }
         } else {
           // Contain: make source a child of target (but keep it visible on current plane too)
-          console.log(`[mouseup] CONTAINING card ${sourceId} inside card ${targetId}`);
-          console.log(`[mouseup] Card will be mirrored (visible on both planes)`);
-          
           data.contain(targetId, sourceId); 
-          
-          // DON'T remove from current plane - keep it visible here
-          // Just update the containment relationship
-          console.log(`[mouseup] Card ${sourceId} is now child of ${targetId} but remains visible on current plane`);
           
           // Visual feedback - flash container
           const targetEl = document.getElementById('card-' + targetId);
           if (targetEl) {
             targetEl.style.boxShadow = '0 0 30px rgba(255,90,90,.8)';
             setTimeout(() => targetEl.style.boxShadow = '', 400);
-            console.log(`[mouseup] Applied contain flash to target card ${targetId}`);
           }
           
           // Visual feedback - also flash the contained card with a different color
@@ -265,30 +207,20 @@ document.addEventListener('mouseup', e => {
           if (sourceEl) {
             sourceEl.style.boxShadow = '0 0 20px rgba(255,90,90,.5)';
             setTimeout(() => sourceEl.style.boxShadow = '', 400);
-            console.log(`[mouseup] Applied contained flash to source card ${sourceId}`);
           }
-          
-          // Don't re-render the plane - card stays visible
         }
         
         // Update both cards' UI to show the new relationship
-        console.log(`[mouseup] Updating UI for both cards`);
         render.updateCardUI(sourceId); 
         render.updateCardUI(targetId); 
-      } else {
-        console.log(`[mouseup] Invalid drop - same card or missing IDs`);
       }
       
-      console.log(`[mouseup] Clearing hover classes from card ${hover.id}`);
       hover.classList.remove('drop-target', 'link-zone', 'contain-zone'); 
       hover = null; 
-    } else {
-      console.log(`[mouseup] No valid drop target`);
     }
     
     dragging = false; 
     dragIds = []; 
-    console.log(`[mouseup] Drag state reset`);
   }
   
   if (selecting) { 
@@ -383,7 +315,6 @@ plane.addEventListener('wheel', e => {
 
 // ---------- Card Hydration ----------
 export function hydrateCard(cardId) {
-  console.log(`[hydrateCard] Starting hydration for card ${cardId}`);
   const root = document.getElementById('card-' + cardId); 
   if (!root) return; 
   const card = data.byId(cardId);
@@ -436,7 +367,6 @@ export function hydrateCard(cardId) {
     
     // Skip if already bound WITH THE SAME ID (prevents re-binding after updates)
     if (k._boundId === rowId) {
-      console.log(`[hydrateCard] Row ${rowIndex} already bound with ID ${rowId}, skipping`);
       return;
     }
     
@@ -451,31 +381,21 @@ export function hydrateCard(cardId) {
       let currentIndex = -1;
       let dropdownItems = [];
       
-      console.log(`[Dropdown] Initializing dropdown for card ${cardId}, row idx: ${row.dataset.idx}`);
-      
       function updateDropdown() {
         const filter = v.value.toLowerCase();
         const linkedIds = Array.from(data.links.get(cardId) || new Set());
         const linkedEntities = linkedIds.map(id => data.byId(id)).filter(Boolean);
-        
-        console.log(`[Dropdown] UpdateDropdown - Card ${cardId}, Filter: "${filter}"`);
-        console.log(`[Dropdown] Linked IDs:`, linkedIds);
-        console.log(`[Dropdown] Linked Entities:`, linkedEntities.map(e => ({id: e.id, name: e.name})));
         
         // Filter matches
         const matches = linkedEntities.filter(e => 
           e.name.toLowerCase().includes(filter)
         );
         
-        console.log(`[Dropdown] Matches found:`, matches.map(e => ({id: e.id, name: e.name})));
-        
         if (matches.length === 0 && filter) {
-          console.log(`[Dropdown] No matches for filter "${filter}"`);
           dropdown.innerHTML = '<div class="attr-dropdown-empty">No matches</div>';
           dropdown.classList.remove('show');
           return;
         } else if (matches.length === 0) {
-          console.log(`[Dropdown] No linked entities to show`);
           dropdown.classList.remove('show');
           return;
         }
@@ -486,7 +406,6 @@ export function hydrateCard(cardId) {
         ).join('');
         
         dropdown.classList.add('show');
-        console.log(`[Dropdown] Showing dropdown with ${matches.length} items`);
         
         // Bind click handlers to dropdown items
         dropdownItems = dropdown.querySelectorAll('.attr-dropdown-item');
@@ -495,11 +414,9 @@ export function hydrateCard(cardId) {
           item.addEventListener('mousedown', (e) => {
             e.preventDefault(); // Prevent focus change
             e.stopPropagation();
-            console.log(`[Dropdown] Mousedown on item ${idx}: "${item.dataset.value}", entity ID: ${item.dataset.entityId}`);
             v.value = item.dataset.value;
             dropdown.classList.remove('show');
             currentIndex = -1;
-            console.log(`[Dropdown] About to commit after selection`);
             // Small delay to ensure value is set
             setTimeout(() => commit(false), 10);
           });
@@ -508,33 +425,25 @@ export function hydrateCard(cardId) {
       
       // Show dropdown on focus
       v.addEventListener('focus', () => {
-        console.log(`[Dropdown] Focus event on value input for card ${cardId}`);
         if (!inh) {
-          console.log(`[Dropdown] Not inherited, updating dropdown`);
           updateDropdown();
-        } else {
-          console.log(`[Dropdown] Inherited attribute, skipping dropdown`);
         }
       });
       
       // Update dropdown on input
       v.addEventListener('input', () => {
-        console.log(`[Dropdown] Input event on value input for card ${cardId}, value: "${v.value}"`);
         if (!inh) updateDropdown();
       });
       
       // Hide dropdown on blur (with delay for clicks)
       v.addEventListener('blur', (e) => {
-        console.log(`[Dropdown] Blur event on value input for card ${cardId}`);
         // Check if we're clicking on a dropdown item
         const relatedTarget = e.relatedTarget;
         if (relatedTarget && relatedTarget.closest('.attr-dropdown')) {
-          console.log(`[Dropdown] Blur but clicking dropdown, not hiding`);
           return;
         }
         
         setTimeout(() => {
-          console.log(`[Dropdown] Hiding dropdown after blur delay`);
           if (dropdown) {
             dropdown.classList.remove('show');
             currentIndex = -1;
@@ -581,27 +490,38 @@ export function hydrateCard(cardId) {
       
       if (inh) { 
         console.log(`[Commit] Processing inherited attribute`);
-        // For inherited attributes, we can set the value
+        // For inherited attributes, we ONLY store the override value
         if (!key) {
           console.log(`[Commit] Empty inherited key, returning`);
           return;
         }
         
-        // Check if this card already has this key in its own attributes
+        // Find if we already have an override for this key
         const existingIdx = (card.attributes || []).findIndex(a => a.key === key);
         
         const match = data.resolveEntityByNameFromLinked(val, cardId); 
         console.log(`[Commit] Entity match for "${val}":`, match);
-        const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'}; 
         
-        if (existingIdx >= 0) {
-          console.log(`[Commit] Updating existing override at index ${existingIdx}`);
-          card.attributes[existingIdx] = newAttr; 
-        } else { 
-          console.log(`[Commit] Adding new override for inherited key`);
-          card.attributes = card.attributes || []; 
-          card.attributes.push(newAttr); 
-        } 
+        if (!val) {
+          // Empty value - remove the override if it exists
+          if (existingIdx >= 0) {
+            console.log(`[Commit] Removing override for inherited key "${key}"`);
+            card.attributes.splice(existingIdx, 1);
+          }
+        } else {
+          // Non-empty value - store as override
+          const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'}; 
+          
+          if (existingIdx >= 0) {
+            console.log(`[Commit] Updating existing override at index ${existingIdx}`);
+            card.attributes[existingIdx] = newAttr; 
+          } else { 
+            console.log(`[Commit] Adding new override for inherited key`);
+            card.attributes = card.attributes || []; 
+            card.attributes.push(newAttr); 
+          }
+        }
+        
         console.log(`[Commit] About to update UI for inherited attribute`);
         render.updateCardUI(cardId); 
         return; 
@@ -612,29 +532,43 @@ export function hydrateCard(cardId) {
       const displayIdx = parseInt(row.dataset.idx);
       console.log(`[Commit] Processing non-inherited attribute at display index ${displayIdx}`);
       
-      // Get the actual data index - this is just the display index since we're showing own attributes in order
-      const actualIdx = displayIdx;
+      // Filter out any attributes that are actually overrides for inherited keys
+      const effectiveAttrs = data.effectiveAttrs(cardId);
+      const inheritedKeys = new Set(effectiveAttrs.filter(a => a.inherited).map(a => a.key));
       
-      // Ensure attributes array exists
-      if (!card.attributes) card.attributes = [];
+      // Get only the TRUE own attributes (not overrides)
+      const trueOwnAttributes = (card.attributes || []).filter(a => !inheritedKeys.has(a.key));
+      
+      console.log(`[Commit] Inherited keys:`, Array.from(inheritedKeys));
+      console.log(`[Commit] True own attributes:`, trueOwnAttributes);
+      
+      // The actual index in the true own attributes array
+      const actualIdx = displayIdx;
       
       // Handle empty rows (deletion)
       if (!key && !val) { 
         console.log(`[Commit] Empty row detected at display index ${displayIdx}`);
-        console.log(`[Commit] Current attributes array length: ${card.attributes.length}`);
+        console.log(`[Commit] True own attributes array length: ${trueOwnAttributes.length}`);
         
-        // Check if this index exists in the attributes array
-        if (actualIdx < card.attributes.length) {
-          // This is an existing attribute being cleared - remove it
-          console.log(`[Commit] Removing attribute at index ${actualIdx}`);
-          card.attributes.splice(actualIdx, 1); 
-          render.updateCardUI(cardId); // This will cascade to children
+        // Check if this index exists in the true own attributes
+        if (actualIdx < trueOwnAttributes.length) {
+          // Find the key to remove from the full attributes array
+          const keyToRemove = trueOwnAttributes[actualIdx].key;
+          console.log(`[Commit] Removing attribute with key "${keyToRemove}"`);
+          
+          // Find and remove from the full attributes array
+          const fullIdx = card.attributes.findIndex(a => a.key === keyToRemove && !inheritedKeys.has(a.key));
+          if (fullIdx >= 0) {
+            card.attributes.splice(fullIdx, 1);
+          }
+          
+          render.updateCardUI(cardId);
           return;
         }
         
         // If it's the only empty row and no attributes exist, keep it as placeholder
         const allOwnRows = root.querySelectorAll('#attrs-' + cardId + ' .attr-row:not(.inherited)');
-        if (allOwnRows.length === 1 && card.attributes.length === 0) {
+        if (allOwnRows.length === 1 && trueOwnAttributes.length === 0) {
           console.log(`[Commit] Keeping single empty row as placeholder`);
           return;
         }
@@ -648,24 +582,35 @@ export function hydrateCard(cardId) {
       
       const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'};
       
-      // Ensure we don't go out of bounds - if actualIdx is beyond array, we're adding
-      if (actualIdx >= card.attributes.length) {
-        console.log(`[Commit] Adding new attribute at end of array`);
+      // Ensure card.attributes exists
+      if (!card.attributes) card.attributes = [];
+      
+      // If actualIdx is beyond the true own attributes, we're adding a new one
+      if (actualIdx >= trueOwnAttributes.length) {
+        console.log(`[Commit] Adding new attribute at end`);
         card.attributes.push(newAttr);
       } else {
-        console.log(`[Commit] Updating attribute at index ${actualIdx}:`, newAttr);
-        card.attributes[actualIdx] = newAttr;
+        // Update existing - find the actual position in the full array
+        const oldKey = trueOwnAttributes[actualIdx].key;
+        const fullIdx = card.attributes.findIndex(a => a.key === oldKey && !inheritedKeys.has(a.key));
+        if (fullIdx >= 0) {
+          console.log(`[Commit] Updating attribute at full index ${fullIdx}`);
+          card.attributes[fullIdx] = newAttr;
+        } else {
+          // Shouldn't happen, but add as fallback
+          card.attributes.push(newAttr);
+        }
       }
       
       // Add new row on Enter with content
       if (addNewRow && key && val) {
         console.log(`[Commit] Checking if should add new row`);
-        console.log(`[Commit] Current attributes count: ${card.attributes.length}, display idx: ${displayIdx}`);
+        const updatedTrueOwn = card.attributes.filter(a => !inheritedKeys.has(a.key));
+        console.log(`[Commit] Current true own attributes count: ${updatedTrueOwn.length}, display idx: ${displayIdx}`);
         
         // If we just edited the last row, add a new empty one
-        if (displayIdx === card.attributes.length - 1) {
-          console.log(`[Commit] Adding new empty row`);
-          card.attributes.push({key: '', value: '', kind: 'text'});
+        if (displayIdx === updatedTrueOwn.length - 1) {
+          console.log(`[Commit] Would add new empty row, triggering UI update`);
           render.updateCardUI(cardId, true);
           return;
         }
@@ -677,6 +622,8 @@ export function hydrateCard(cardId) {
     }
     
     [k, v].forEach(inp => { 
+      let isCommitting = false; // Prevent double commits
+      
       inp.addEventListener('keydown', e => { 
         if (e.key === 'Enter') { 
           e.preventDefault(); 
@@ -687,17 +634,25 @@ export function hydrateCard(cardId) {
             dropdown.classList.remove('show');
             currentIndex = -1;
           }
+          isCommitting = true;
           commit(true); // Create new row on Enter
+          isCommitting = false;
         } else if (e.key === 'Backspace' && inp.value === '' && !inh) {
           const otherInp = (inp === k) ? v : k;
           if (otherInp.value === '') {
             e.preventDefault();
+            isCommitting = true;
             commit(false);
+            isCommitting = false;
           }
         }
       }); 
       
-      inp.addEventListener('blur', () => commit(false)); 
+      inp.addEventListener('blur', () => {
+        if (!isCommitting) {
+          commit(false);
+        }
+      }); 
       
       // Note: inherited keys are readonly but values are editable
       if (inh && inp === k) { 
@@ -713,30 +668,24 @@ export function hydrateCard(cardId) {
   // Linked entities handlers
   const linksContainer = root.querySelector('#links-' + cardId);
   if (!linksContainer) {
-    console.log(`[hydrateCard] No links container found for card ${cardId}`);
     return;
   }
   
   const linkItems = linksContainer.querySelectorAll('.link-item');
-  console.log(`[hydrateCard] Card ${cardId} has ${linkItems.length} linked items`);
   
   linkItems.forEach((it, idx) => {
     // Skip if already bound or invalid
     if (it._eventsBound) return;
     if (!it.dataset.id || it.dataset.id === 'undefined') {
-      console.log(`  Skipping item ${idx} - invalid data-id: "${it.dataset.id}"`);
       return;
     }
     
     const linkId = parseInt(it.dataset.id);
-    console.log(`  Adding listeners to item ${idx} with data-id="${linkId}"`);
     
     // Right-click handler - unlink
     it.addEventListener('contextmenu', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      
-      console.log(`[contextmenu] Card ${cardId} removing link to ${linkId}`);
       
       data.unlink(cardId, linkId);
       this.remove();
@@ -751,7 +700,6 @@ export function hydrateCard(cardId) {
     it.addEventListener('click', function(e) { 
       e.preventDefault();
       e.stopPropagation();
-      console.log(`[click] Card ${cardId} jumping to linked entity ${linkId}`);
       viewport.focusOn(linkId);
     });
     
@@ -760,7 +708,6 @@ export function hydrateCard(cardId) {
   
   // Mark card as fully hydrated
   root._fullyHydrated = true;
-  console.log(`[hydrateCard] Completed hydration for card ${cardId}`);
 }
 
 // ---------- Delete Selected ----------

@@ -237,68 +237,8 @@ export function updateCardUI(cardId, focusNew = false) {
   if (children && children.size > 0) {
     console.log(`[updateCardUI] Cascading update to ${children.size} children:`, Array.from(children));
     
-    // Get this card's effective attributes BEFORE the change to know what was inherited
-    const parentEffective = data.effectiveAttrs(cardId);
-    const parentEffectiveKeys = new Set(parentEffective.map(a => a.key));
-    console.log(`[updateCardUI] Parent's effective keys:`, Array.from(parentEffectiveKeys));
-    
     children.forEach(childId => {
-      const childCard = data.byId(childId);
-      if (childCard && childCard.attributes) {
-        const originalAttrs = [...childCard.attributes];
-        const originalLength = childCard.attributes.length;
-        
-        // Get what the child WOULD inherit now
-        const childWouldInherit = new Set();
-        const childDirectParents = Array.from(data.parentsOf.get(childId) || new Set());
-        childDirectParents.forEach(pid => {
-          const parentEff = data.effectiveAttrs(pid);
-          parentEff.forEach(attr => childWouldInherit.add(attr.key));
-        });
-        
-        console.log(`[updateCardUI] Child ${childId} would inherit:`, Array.from(childWouldInherit));
-        console.log(`[updateCardUI] Child ${childId} current attributes:`, childCard.attributes);
-        
-        // Remove attributes that:
-        // 1. Were overrides for inherited keys
-        // 2. But those keys are no longer inherited
-        childCard.attributes = childCard.attributes.filter(attr => {
-          // If this key is no longer inherited, and it was an override, remove it
-          if (!childWouldInherit.has(attr.key)) {
-            // Check if this was likely an override by seeing if parent used to have it
-            // For simplicity, we'll keep attributes that are unique to the child
-            // and remove ones that match keys that were removed from ancestors
-            
-            // This is a heuristic: if the key matches something that was in the parent
-            // but is now gone, it was probably an override
-            console.log(`[updateCardUI] Child ${childId}: key "${attr.key}" is not inherited anymore`);
-            
-            // Check if any parent in the chain still has this key
-            let stillExists = false;
-            childDirectParents.forEach(pid => {
-              const p = data.byId(pid);
-              if (p && p.attributes) {
-                if (p.attributes.some(a => a.key === attr.key)) {
-                  stillExists = true;
-                }
-              }
-            });
-            
-            if (!stillExists) {
-              console.log(`[updateCardUI] Removing orphaned attribute "${attr.key}" from child ${childId}`);
-              return false;
-            }
-          }
-          
-          return true;
-        });
-        
-        if (childCard.attributes.length !== originalLength) {
-          console.log(`[updateCardUI] Cleaned ${originalLength - childCard.attributes.length} attributes from child ${childId}`);
-        }
-      }
-      
-      // Recursively update this child (which will cascade to its children)
+      // Simply update the child's UI - the effectiveAttrs function will handle inheritance correctly
       updateCardUI(childId, false);
     });
   } else {
