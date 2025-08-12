@@ -86,67 +86,121 @@ export function deleteCard(id) {
 
 // ---------- Attribute System ----------
 export function linearParents(id) { 
+  console.log(`[linearParents] Getting parent chain for card ${id}`);
   const seen = new Set(), order = []; 
+  
   (function dfs(x) { 
     if (seen.has(x)) return; 
-    (parentsOf.get(x) || new Set()).forEach(p => { 
-      dfs(p); 
-      order.push(p); 
+    const parents = parentsOf.get(x) || new Set();
+    console.log(`  Card ${x} has parents:`, Array.from(parents));
+    
+    parents.forEach(p => { 
+      if (!seen.has(p)) {
+        dfs(p); 
+        order.push(p);
+        console.log(`  Added parent ${p} to chain`);
+      }
     }); 
     seen.add(x); 
   })(id); 
+  
+  console.log(`Final parent chain for ${id}:`, order);
   return order; 
 }
 
 export function effectiveAttrs(id) { 
-  console.log(`[effectiveAttrs] Getting effective attributes for card ${id}`);
+  console.log(`\n[effectiveAttrs] ====== Getting attributes for card ${id} ======`);
   const me = byId(id); 
   if (!me) return [];
   
   const out = []; 
-  const ownKeys = new Set((me.attributes || []).map(a => a.key)); 
   
-  console.log(`[effectiveAttrs] Card's own attributes:`, me.attributes);
-  console.log(`[effectiveAttrs] Own attribute keys:`, Array.from(ownKeys));
+  console.log(`[effectiveAttrs] Card name: ${me.name}`);
+  console.log(`[effectiveAttrs] Card's own stored attributes:`, me.attributes);
   
-  // Add own attributes first
-  (me.attributes || []).forEach(a => {
-    console.log(`[effectiveAttrs] Adding own attribute:`, a);
-    out.push({...a, inherited: false});
-  }); 
+  // First, collect what we inherit from parents
+  const inheritedAttrs = [];
+  const inheritedKeys = new Set();
   
-  // Get parent cards for inheritance
-  const parents = linearParents(id);
-  console.log(`[effectiveAttrs] Parent IDs:`, parents);
+  // Get ONLY DIRECT PARENTS
+  const directParents = Array.from(parentsOf.get(id) || new Set());
+  console.log(`[effectiveAttrs] Direct parents:`, directParents);
   
-  // Add inherited attributes from parents (keys only, not values)
-  parents.forEach(pid => { 
+  directParents.forEach(pid => { 
     const p = byId(pid); 
     if (!p) {
       console.log(`[effectiveAttrs] Parent ${pid} not found`);
       return;
     }
-    console.log(`[effectiveAttrs] Processing parent ${pid} (${p.name}) attributes:`, p.attributes);
-    (p.attributes || []).forEach(a => { 
-      if (!ownKeys.has(a.key) && a.key) {  // Only inherit if we don't already have this key
-        console.log(`[effectiveAttrs] Inheriting key "${a.key}" from parent ${pid}`);
-        // Inherit the key but with empty value - child sets its own value
-        out.push({
-          key: a.key, 
-          value: '', // Empty value - to be set by child
-          kind: 'text',
-          inherited: true, 
-          source: pid,
-          sourceCardName: p.name
-        }); 
-        ownKeys.add(a.key); // Prevent duplicate inherited keys
-      } else if (a.key) {
-        console.log(`[effectiveAttrs] Skipping inherited key "${a.key}" (already exists)`);
+    
+    console.log(`[effectiveAttrs] Processing parent ${pid} (${p.name})`);
+    
+    // Get parent's EFFECTIVE attributes (including what they inherited)
+    const parentEffective = effectiveAttrs(pid);
+    console.log(`[effectiveAttrs] Parent's effective attributes:`, parentEffective);
+    
+    // Inherit ALL of parent's effective attributes IN THE SAME ORDER
+    parentEffective.forEach(parentAttr => {
+      // Skip if we already inherited this key from another parent
+      if (inheritedKeys.has(parentAttr.key)) {
+        console.log(`[effectiveAttrs]   Key "${parentAttr.key}" already inherited`);
+        return;
       }
-    }); 
-  }); 
+      
+      console.log(`[effectiveAttrs]   INHERITING key="${parentAttr.key}" from ${p.name}`);
+      
+      // Inherit the key but with empty value (unless we have an override)
+      inheritedAttrs.push({
+        key: parentAttr.key,
+        value: '', // Empty by default
+        kind: 'text',
+        inherited: true,
+        source: pid,
+        sourceCardName: p.name
+      });
+      inheritedKeys.add(parentAttr.key);
+    });
+  });
   
-  console.log(`[effectiveAttrs] Final effective attributes:`, out);
+  // DON'T SORT - Keep inherited attributes in the order they were inherited
+  // This preserves the parent's order
+  
+  // Check if we have overrides for inherited attributes
+  inheritedAttrs.forEach(inheritedAttr => {
+    // Look for an override in our own attributes
+    const override = (me.attributes || []).find(a => a.key === inheritedAttr.key);
+    if (override) {
+      // We have an override - use our value
+      console.log(`[effectiveAttrs] Using override for "${inheritedAttr.key}": "${override.value}"`);
+      out.push({
+        ...inheritedAttr,
+        value: override.value,
+        kind: override.kind,
+        entityId: override.entityId
+      });
+    } else {
+      // No override - use inherited empty value
+      out.push(inheritedAttr);
+    }
+  });
+  
+  // Then add our OWN attributes that aren't overrides
+  // Keep them in their original order
+  (me.attributes || []).forEach((a, idx) => {
+    if (!inheritedKeys.has(a.key)) {
+      // This is our own attribute, not an override
+      console.log(`[effectiveAttrs] Adding own attribute: key="${a.key}", value="${a.value}"`);
+      out.push({...a, inherited: false});
+    }
+  });
+  
+  console.log(`[effectiveAttrs] Final effective attributes (${out.length} total):`);
+  out.forEach((attr, idx) => {
+    const source = attr.inherited ? ` [INHERITED from ${attr.sourceCardName}]` : ' [OWN]';
+    console.log(`[effectiveAttrs]   ${idx}: key="${attr.key}", value="${attr.value}"${source}`);
+  });
+  console.log(`[effectiveAttrs] ====== End attributes for card ${id} ======\n`);
+  
   return out; 
 }
 

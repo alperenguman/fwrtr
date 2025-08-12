@@ -110,7 +110,10 @@ export function getLinkedEntitiesOptions(cardId) {
 
 // Proper attribute row rendering with custom dropdown
 export function renderAttrRows(card) {
+  console.log(`\n[renderAttrRows] ====== Rendering attributes for card ${card.id} (${card.name}) ======`);
+  
   const attrs = data.effectiveAttrs(card.id);
+  console.log(`[renderAttrRows] Got ${attrs.length} effective attributes`);
   
   // If no attributes at all, show one empty editable row
   if (attrs.length === 0) {
@@ -123,23 +126,60 @@ export function renderAttrRows(card) {
     </div>`;
   }
   
-  // Render existing attributes
-  const rows = attrs.map((a, i) => {
-    const inh = a.inherited; 
-    const ent = a.kind === 'entity';
-    const keyPlaceholder = inh ? `${a.key} (from ${a.sourceCardName || 'parent'})` : 'key';
-    const valuePlaceholder = inh ? 'set value' : 'value';
+  // Separate inherited and owned attributes - DON'T SORT, keep their original order
+  const inherited = attrs.filter(a => a.inherited);
+  const owned = attrs.filter(a => !a.inherited);
+  
+  console.log(`[renderAttrRows] Own attributes: ${owned.length}, Inherited: ${inherited.length}`);
+  
+  let html = '';
+  let displayIdx = 0;
+  
+  // Render inherited attributes first (they use special indices)
+  inherited.forEach((a, i) => {
+    const keyPlaceholder = `${a.key} (from ${a.sourceCardName || 'parent'})`;
+    const valuePlaceholder = 'set value';
     
-    return `<div class="attr-row ${inh ? 'inherited' : ''}" data-idx="${i}" ${inh ? 'data-inh="1"' : ''}>
-      <input class="attr-key" ${inh ? 'readonly' : ''} value="${escAttr(a.key || '')}" placeholder="${keyPlaceholder}" title="${inh ? `Inherited from ${a.sourceCardName || 'parent'}` : ''}">
+    console.log(`[renderAttrRows] Rendering inherited[${i}]: key="${a.key}" from ${a.sourceCardName}`);
+    
+    html += `<div class="attr-row inherited" data-idx="${i}" data-inh="1">
+      <input class="attr-key" readonly value="${escAttr(a.key || '')}" placeholder="${keyPlaceholder}" title="Inherited from ${a.sourceCardName || 'parent'}">
       <div class="attr-dropdown-wrapper">
-        <input class="attr-val ${ent ? 'entity' : ''}" value="${escAttr(ent ? (data.byId(a.entityId)?.name || a.value) : (a.value || ''))}" placeholder="${valuePlaceholder}" autocomplete="off">
-        ${!inh ? `<div class="attr-dropdown" id="dropdown-${card.id}-${i}"></div>` : ''}
+        <input class="attr-val" value="${escAttr(a.value || '')}" placeholder="${valuePlaceholder}" autocomplete="off">
       </div>
     </div>`;
-  }).join('');
+  });
   
-  return rows;
+  // Render owned attributes with their actual indices
+  owned.forEach((a, i) => {
+    const ent = a.kind === 'entity';
+    console.log(`[renderAttrRows] Rendering own[${i}]: key="${a.key}", value="${a.value}", entity=${ent}`);
+    
+    html += `<div class="attr-row" data-idx="${i}">
+      <input class="attr-key" value="${escAttr(a.key || '')}" placeholder="key">
+      <div class="attr-dropdown-wrapper">
+        <input class="attr-val ${ent ? 'entity' : ''}" value="${escAttr(ent ? (data.byId(a.entityId)?.name || a.value) : (a.value || ''))}" placeholder="value" autocomplete="off">
+        <div class="attr-dropdown" id="dropdown-${card.id}-${i}"></div>
+      </div>
+    </div>`;
+  });
+  
+  // Add empty row for new entries (only if we have owned attributes or no inherited)
+  const needsEmptyRow = owned.length > 0 || inherited.length === 0;
+  if (needsEmptyRow) {
+    const emptyIdx = owned.length;
+    console.log(`[renderAttrRows] Adding empty row at index ${emptyIdx}`);
+    html += `<div class="attr-row" data-idx="${emptyIdx}">
+      <input class="attr-key" value="" placeholder="key">
+      <div class="attr-dropdown-wrapper">
+        <input class="attr-val" value="" placeholder="value" autocomplete="off">
+        <div class="attr-dropdown" id="dropdown-${card.id}-${emptyIdx}"></div>
+      </div>
+    </div>`;
+  }
+  
+  console.log(`[renderAttrRows] ====== End rendering for card ${card.id} ======\n`);
+  return html;
 }
 
 export function renderLinks(cardId) { 
@@ -150,7 +190,7 @@ export function renderLinks(cardId) {
 
 // ---------- UI Updates ----------
 export function updateCardUI(cardId, focusNew = false) { 
-  console.log(`[updateCardUI] Starting update for card ${cardId}, focusNew: ${focusNew}`);
+  console.log(`\n[updateCardUI] ====== Updating UI for card ${cardId} ======`);
   const c = data.byId(cardId); 
   const el = document.getElementById('card-' + cardId); 
   if (!c || !el) {
@@ -158,28 +198,21 @@ export function updateCardUI(cardId, focusNew = false) {
     return;
   }
   
-  console.log(`[updateCardUI] Card data:`, {
-    id: c.id,
-    name: c.name,
-    type: c.type,
-    attributes: c.attributes
-  });
-  console.log(`[updateCardUI] Current links for card ${cardId}:`, Array.from(data.links.get(cardId) || new Set()));
+  console.log(`[updateCardUI] Card name: ${c.name}`);
+  console.log(`[updateCardUI] Card stored attributes:`, c.attributes);
+  console.log(`[updateCardUI] Current links:`, Array.from(data.links.get(cardId) || new Set()));
   
   el.querySelector('.card-title').textContent = c.name; 
   el.querySelector('.card-type').textContent = c.type || 'entity'; 
-  
-  console.log(`[updateCardUI] Updating HTML for card ${cardId}`);
-  console.log(`[updateCardUI] About to render attributes:`, c.attributes);
   
   const oldAttrsHTML = el.querySelector('#attrs-' + cardId).innerHTML;
   const newAttrsHTML = renderAttrRows(c);
   
   if (oldAttrsHTML !== newAttrsHTML) {
-    console.log(`[updateCardUI] Attributes HTML changed, updating`);
+    console.log(`[updateCardUI] Attributes HTML changed, updating DOM`);
     el.querySelector('#attrs-' + cardId).innerHTML = newAttrsHTML;
   } else {
-    console.log(`[updateCardUI] Attributes HTML unchanged`);
+    console.log(`[updateCardUI] Attributes HTML unchanged, skipping DOM update`);
   }
   
   el.querySelector('#links-' + cardId).innerHTML = renderLinks(cardId); 
@@ -198,18 +231,81 @@ export function updateCardUI(cardId, focusNew = false) {
     last?.querySelector('.attr-key')?.focus(); 
   }
   
-  // CASCADE UPDATE TO CHILDREN - Update all children that inherit from this card
+  // CASCADE UPDATE TO ALL DESCENDANTS
   console.log(`[updateCardUI] Checking for children to cascade update`);
   const children = data.childrenOf.get(cardId);
   if (children && children.size > 0) {
     console.log(`[updateCardUI] Cascading update to ${children.size} children:`, Array.from(children));
+    
+    // Get this card's effective attributes BEFORE the change to know what was inherited
+    const parentEffective = data.effectiveAttrs(cardId);
+    const parentEffectiveKeys = new Set(parentEffective.map(a => a.key));
+    console.log(`[updateCardUI] Parent's effective keys:`, Array.from(parentEffectiveKeys));
+    
     children.forEach(childId => {
-      // Recursively update children (this will also update their children, etc.)
+      const childCard = data.byId(childId);
+      if (childCard && childCard.attributes) {
+        const originalAttrs = [...childCard.attributes];
+        const originalLength = childCard.attributes.length;
+        
+        // Get what the child WOULD inherit now
+        const childWouldInherit = new Set();
+        const childDirectParents = Array.from(data.parentsOf.get(childId) || new Set());
+        childDirectParents.forEach(pid => {
+          const parentEff = data.effectiveAttrs(pid);
+          parentEff.forEach(attr => childWouldInherit.add(attr.key));
+        });
+        
+        console.log(`[updateCardUI] Child ${childId} would inherit:`, Array.from(childWouldInherit));
+        console.log(`[updateCardUI] Child ${childId} current attributes:`, childCard.attributes);
+        
+        // Remove attributes that:
+        // 1. Were overrides for inherited keys
+        // 2. But those keys are no longer inherited
+        childCard.attributes = childCard.attributes.filter(attr => {
+          // If this key is no longer inherited, and it was an override, remove it
+          if (!childWouldInherit.has(attr.key)) {
+            // Check if this was likely an override by seeing if parent used to have it
+            // For simplicity, we'll keep attributes that are unique to the child
+            // and remove ones that match keys that were removed from ancestors
+            
+            // This is a heuristic: if the key matches something that was in the parent
+            // but is now gone, it was probably an override
+            console.log(`[updateCardUI] Child ${childId}: key "${attr.key}" is not inherited anymore`);
+            
+            // Check if any parent in the chain still has this key
+            let stillExists = false;
+            childDirectParents.forEach(pid => {
+              const p = data.byId(pid);
+              if (p && p.attributes) {
+                if (p.attributes.some(a => a.key === attr.key)) {
+                  stillExists = true;
+                }
+              }
+            });
+            
+            if (!stillExists) {
+              console.log(`[updateCardUI] Removing orphaned attribute "${attr.key}" from child ${childId}`);
+              return false;
+            }
+          }
+          
+          return true;
+        });
+        
+        if (childCard.attributes.length !== originalLength) {
+          console.log(`[updateCardUI] Cleaned ${originalLength - childCard.attributes.length} attributes from child ${childId}`);
+        }
+      }
+      
+      // Recursively update this child (which will cascade to its children)
       updateCardUI(childId, false);
     });
+  } else {
+    console.log(`[updateCardUI] No children to cascade to`);
   }
   
-  console.log(`[updateCardUI] Completed update for card ${cardId}`);
+  console.log(`[updateCardUI] ====== Completed update for card ${cardId} ======\n`);
 }
 
 // ---------- Section Toggle ----------

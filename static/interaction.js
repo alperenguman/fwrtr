@@ -607,32 +607,34 @@ export function hydrateCard(cardId) {
         return; 
       }
       
-      const idx = parseInt(row.dataset.idx);
-      console.log(`[Commit] Processing non-inherited attribute at index ${idx}`);
+      // NON-INHERITED ATTRIBUTE HANDLING
+      // The dataset.idx is for display purposes, but we need the actual data index
+      const displayIdx = parseInt(row.dataset.idx);
+      console.log(`[Commit] Processing non-inherited attribute at display index ${displayIdx}`);
       
-      // For non-inherited attributes, we need to map the index to actual attributes
-      // (skipping inherited ones in the display)
-      const nonInheritedAttrs = (card.attributes || []);
-      const actualIdx = Math.min(idx, nonInheritedAttrs.length);
+      // Get the actual data index - this is just the display index since we're showing own attributes in order
+      const actualIdx = displayIdx;
       
-      // Handle empty rows
+      // Ensure attributes array exists
+      if (!card.attributes) card.attributes = [];
+      
+      // Handle empty rows (deletion)
       if (!key && !val) { 
-        console.log(`[Commit] Empty row detected`);
-        const allRows = root.querySelectorAll('#attrs-' + cardId + ' .attr-row:not(.inherited)');
-        console.log(`[Commit] Total non-inherited rows: ${allRows.length}`);
-        console.log(`[Commit] Current non-inherited attributes: ${nonInheritedAttrs.length}`);
+        console.log(`[Commit] Empty row detected at display index ${displayIdx}`);
+        console.log(`[Commit] Current attributes array length: ${card.attributes.length}`);
         
-        // For deleting: check if this is an actual attribute that should be removed
-        if (actualIdx < nonInheritedAttrs.length) {
+        // Check if this index exists in the attributes array
+        if (actualIdx < card.attributes.length) {
           // This is an existing attribute being cleared - remove it
-          console.log(`[Commit] Removing attribute at actual index ${actualIdx}`);
+          console.log(`[Commit] Removing attribute at index ${actualIdx}`);
           card.attributes.splice(actualIdx, 1); 
           render.updateCardUI(cardId); // This will cascade to children
           return;
         }
         
         // If it's the only empty row and no attributes exist, keep it as placeholder
-        if (allRows.length === 1 && nonInheritedAttrs.length === 0) {
+        const allOwnRows = root.querySelectorAll('#attrs-' + cardId + ' .attr-row:not(.inherited)');
+        if (allOwnRows.length === 1 && card.attributes.length === 0) {
           console.log(`[Commit] Keeping single empty row as placeholder`);
           return;
         }
@@ -640,20 +642,28 @@ export function hydrateCard(cardId) {
         return; 
       }
       
+      // Setting or updating an attribute
       const match = data.resolveEntityByNameFromLinked(val, cardId); 
       console.log(`[Commit] Entity match for "${val}":`, match);
       
-      if (!card.attributes) card.attributes = []; 
       const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'};
-      console.log(`[Commit] Setting attribute at actual index ${actualIdx}:`, newAttr);
-      card.attributes[actualIdx] = newAttr; 
+      
+      // Ensure we don't go out of bounds - if actualIdx is beyond array, we're adding
+      if (actualIdx >= card.attributes.length) {
+        console.log(`[Commit] Adding new attribute at end of array`);
+        card.attributes.push(newAttr);
+      } else {
+        console.log(`[Commit] Updating attribute at index ${actualIdx}:`, newAttr);
+        card.attributes[actualIdx] = newAttr;
+      }
       
       // Add new row on Enter with content
       if (addNewRow && key && val) {
         console.log(`[Commit] Checking if should add new row`);
-        const nonInheritedAttrs = (card.attributes || []).filter(a => !a.inherited);
-        console.log(`[Commit] Non-inherited attrs count: ${nonInheritedAttrs.length}, current idx: ${idx}`);
-        if (idx === nonInheritedAttrs.length - 1) {
+        console.log(`[Commit] Current attributes count: ${card.attributes.length}, display idx: ${displayIdx}`);
+        
+        // If we just edited the last row, add a new empty one
+        if (displayIdx === card.attributes.length - 1) {
           console.log(`[Commit] Adding new empty row`);
           card.attributes.push({key: '', value: '', kind: 'text'});
           render.updateCardUI(cardId, true);
@@ -661,7 +671,7 @@ export function hydrateCard(cardId) {
         }
       }
       
-      console.log(`[Commit] Final attributes before UI update:`, card.attributes);
+      console.log(`[Commit] Final attributes:`, card.attributes);
       console.log(`[Commit] About to update UI`);
       render.updateCardUI(cardId); 
     }
