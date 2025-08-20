@@ -57,7 +57,7 @@ export function createCard(x, y) {
   const c = {
     id: nextId++,
     name: 'Entity ' + (nextId - 1),
-    type: 'entity',
+    type: null, // Type determined by inheritance
     content: '',
     attributes: []
   }; 
@@ -84,7 +84,71 @@ export function deleteCard(id) {
   return true;
 }
 
-// ---------- Attribute System ----------
+// ---------- Type System ----------
+export function getEffectiveTypes(cardId) {
+  const card = byId(cardId);
+  if (!card) return [];
+  
+  // Check if this card has any parents
+  const parents = parentsOf.get(cardId);
+  if (!parents || parents.size === 0) {
+    // No parents - this is a base entity
+    return [{ type: 'Base Entity', parentId: null }];
+  }
+  
+  // Has parents - collect all parent types
+  const types = [];
+  parents.forEach(parentId => {
+    const parentCard = byId(parentId);
+    if (parentCard) {
+      types.push({
+        type: parentCard.name || 'entity',
+        parentId: parentId
+      });
+    }
+  });
+  
+  return types.length > 0 ? types : [{ type: 'entity', parentId: null }];
+}
+
+// Generate a consistent color for a type string
+export function getTypeColor(type) {
+  if (type === 'Base Entity') {
+    return '#666'; // Gray for base entities
+  }
+  
+  // Generate consistent color from type string
+  let hash = 0;
+  for (let i = 0; i < type.length; i++) {
+    hash = type.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  // Generate hue from hash (0-360)
+  const hue = Math.abs(hash) % 360;
+  // Use consistent saturation and lightness for readability
+  return `hsl(${hue}, 65%, 55%)`;
+}
+
+// Remove a specific parent relationship
+export function removeParent(childId, parentId) {
+  const parents = parentsOf.get(childId);
+  if (parents) {
+    parents.delete(parentId);
+    if (parents.size === 0) {
+      parentsOf.delete(childId);
+    }
+  }
+  
+  const children = childrenOf.get(parentId);
+  if (children) {
+    children.delete(childId);
+    if (children.size === 0) {
+      childrenOf.delete(parentId);
+    }
+  }
+  
+  console.log(`[removeParent] Removed inheritance: ${parentId} -> ${childId}`);
+}
 export function linearParents(id) { 
   console.log(`[linearParents] Getting parent chain for card ${id}`);
   const seen = new Set(), order = []; 
@@ -118,14 +182,15 @@ export function effectiveAttrs(id) {
   console.log(`[effectiveAttrs] Card name: ${me.name}`);
   console.log(`[effectiveAttrs] Card's own stored attributes:`, me.attributes);
   
-  // First, collect what we inherit from parents
+  // First, collect what we inherit from ALL parents
   const inheritedAttrs = [];
   const inheritedKeys = new Set();
   
-  // Get ONLY DIRECT PARENTS
+  // Get ALL DIRECT PARENTS
   const directParents = Array.from(parentsOf.get(id) || new Set());
   console.log(`[effectiveAttrs] Direct parents:`, directParents);
   
+  // Process each parent
   directParents.forEach(pid => { 
     const p = byId(pid); 
     if (!p) {
@@ -141,9 +206,9 @@ export function effectiveAttrs(id) {
     
     // Inherit ALL of parent's effective attributes IN THE SAME ORDER
     parentEffective.forEach(parentAttr => {
-      // Skip if we already inherited this key from another parent
+      // For multiple inheritance, if key already inherited from another parent, skip
       if (inheritedKeys.has(parentAttr.key)) {
-        console.log(`[effectiveAttrs]   Key "${parentAttr.key}" already inherited`);
+        console.log(`[effectiveAttrs]   Key "${parentAttr.key}" already inherited from another parent`);
         return;
       }
       
@@ -241,7 +306,7 @@ export function seed() {
   const a = {
     id: nextId++,
     name: 'Sarah Chen',
-    type: 'Actor',
+    type: null, // Type will be determined by inheritance
     content: 'A marine biologist studying deep-sea creatures. She works at The Research Station and is concerned about the Strange Readings.',
     attributes: []
   };
@@ -249,7 +314,7 @@ export function seed() {
   const b = {
     id: nextId++,
     name: 'The Research Station',
-    type: 'Location',
+    type: null, // Type will be determined by inheritance
     content: 'A remote underwater facility 200 meters below the Pacific Ocean surface. Sarah Chen conducts her research here.',
     attributes: []
   };
@@ -257,10 +322,12 @@ export function seed() {
   const d = {
     id: nextId++,
     name: 'Strange Readings',
-    type: 'Event',
+    type: null, // Type will be determined by inheritance
     content: 'Sonar equipment detects unusual patterns below The Research Station. Sarah Chen is investigating.',
     attributes: []
   };
+  
+  all.push(a, b, d);
   
   all.push(a, b, d);
   

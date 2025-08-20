@@ -912,6 +912,35 @@ export function hydrateCard(cardId) {
     k._eventsBound = true;
   });
 
+  // Type pill handlers for breaking inheritance
+  const typesContainer = root.querySelector('.card-types');
+  if (typesContainer && !typesContainer._eventsBound) {
+    typesContainer.addEventListener('contextmenu', function(e) {
+      const pill = e.target.closest('.card-type-pill');
+      if (pill && pill.dataset.parent) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const parentId = parseInt(pill.dataset.parent);
+        const childId = parseInt(typesContainer.dataset.cardId);
+        
+        // Remove the inheritance relationship
+        data.removeParent(childId, parentId);
+        
+        // Visual feedback
+        pill.style.opacity = '0.5';
+        setTimeout(() => {
+          // Update the card UI to reflect the change
+          render.updateCardUI(childId);
+        }, 200);
+        
+        console.log(`[hydrateCard] Removed inheritance from ${parentId} to ${childId}`);
+      }
+    });
+    
+    typesContainer._eventsBound = true;
+  }
+  
   // Linked entities handlers with drag support
   const linksContainer = root.querySelector('#links-' + cardId);
   if (!linksContainer) {

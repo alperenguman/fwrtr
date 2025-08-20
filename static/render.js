@@ -69,6 +69,14 @@ export function renderCard(v) {
   const c = data.byId(v.refId); 
   if (!c) return; 
   
+  // Get effective types (multiple for multiple inheritance)
+  const effectiveTypes = data.getEffectiveTypes(c.id);
+  const typePillsHTML = effectiveTypes.map(t => {
+    const color = data.getTypeColor(t.type);
+    const dataParent = t.parentId ? `data-parent="${t.parentId}"` : '';
+    return `<div class="card-type-pill" ${dataParent} style="border-color: ${color}; color: ${color}" title="${t.parentId ? 'Right-click to remove inheritance' : ''}">${esc(t.type)}</div>`;
+  }).join('');
+  
   const el = document.createElement('div'); 
   el.className = 'card'; 
   el.id = 'card-' + c.id; 
@@ -81,7 +89,7 @@ export function renderCard(v) {
       <div class="card-actions"><button class="card-action danger" onclick="deleteCard(${c.id})">×</button></div>
     </div>
     <div class="card-content">
-      <div class="card-type">${esc(c.type || 'entity')}</div>
+      <div class="card-types" data-card-id="${c.id}">${typePillsHTML}</div>
 
       <div class="section-header" onclick="toggleSection('attrs',${c.id})">
         <span class="caret down" id="caret-attrs-${c.id}">▶</span> Attributes
@@ -227,8 +235,32 @@ export function updateCardUI(cardId, focusNew = false) {
   console.log(`[updateCardUI] Card stored attributes:`, c.attributes);
   console.log(`[updateCardUI] Current links:`, Array.from(data.links.get(cardId) || new Set()));
   
+  // Update title
   el.querySelector('.card-title').textContent = c.name; 
-  el.querySelector('.card-type').textContent = c.type || 'entity'; 
+  
+  // Update types with inherited types and colors (multiple)
+  const effectiveTypes = data.getEffectiveTypes(cardId);
+  const typesContainer = el.querySelector('.card-types');
+  if (typesContainer) {
+    const typePillsHTML = effectiveTypes.map(t => {
+      const color = data.getTypeColor(t.type);
+      const dataParent = t.parentId ? `data-parent="${t.parentId}"` : '';
+      return `<div class="card-type-pill" ${dataParent} style="border-color: ${color}; color: ${color}" title="${t.parentId ? 'Right-click to remove inheritance' : ''}">${esc(t.type)}</div>`;
+    }).join('');
+    typesContainer.innerHTML = typePillsHTML;
+    typesContainer.dataset.cardId = cardId;
+  } else {
+    // Fallback for old single type element
+    const typeEl = el.querySelector('.card-type-pill');
+    if (typeEl && effectiveTypes.length > 0) {
+      const firstType = effectiveTypes[0];
+      const color = data.getTypeColor(firstType.type);
+      typeEl.textContent = firstType.type;
+      typeEl.style.borderColor = color;
+      typeEl.style.color = color;
+      typeEl.style.backgroundColor = 'transparent';
+    }
+  }
   
   const oldAttrsHTML = el.querySelector('#attrs-' + cardId).innerHTML;
   const newAttrsHTML = renderAttrRows(c);
