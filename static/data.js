@@ -152,15 +152,32 @@ export function effectiveAttrs(id) {
       // Check if we have a value for this inherited key
       const myOverride = (me.attributes || []).find(a => a.key === parentAttr.key);
       
-      inheritedAttrs.push({
-        key: parentAttr.key,
-        value: myOverride ? myOverride.value : '', // Use our override value if we have one
-        kind: myOverride ? myOverride.kind : 'text',
-        entityId: myOverride ? myOverride.entityId : undefined,
-        inherited: true,
-        source: pid,
-        sourceCardName: p.name
-      });
+      if (myOverride) {
+        // We have an override - use our value with proper kind/entityId preservation
+        inheritedAttrs.push({
+          key: parentAttr.key,
+          value: myOverride.value,
+          kind: myOverride.kind || 'text',
+          entityId: myOverride.entityId,
+          entityIds: myOverride.entityIds,
+          values: myOverride.values,
+          inherited: true,
+          source: pid,
+          sourceCardName: p.name
+        });
+      } else {
+        // No override - just inherit the key with empty value
+        // Values are NOT inherited, only keys
+        inheritedAttrs.push({
+          key: parentAttr.key,
+          value: '', // Always empty - we don't inherit values
+          kind: 'text',
+          inherited: true,
+          source: pid,
+          sourceCardName: p.name
+        });
+      }
+      
       inheritedKeys.add(parentAttr.key);
     });
   });
@@ -180,7 +197,7 @@ export function effectiveAttrs(id) {
   console.log(`[effectiveAttrs] Final effective attributes (${out.length} total):`);
   out.forEach((attr, idx) => {
     const source = attr.inherited ? ` [INHERITED from ${attr.sourceCardName}]` : ' [OWN]';
-    console.log(`[effectiveAttrs]   ${idx}: key="${attr.key}", value="${attr.value}"${source}`);
+    console.log(`[effectiveAttrs]   ${idx}: key="${attr.key}", value="${attr.value}", kind="${attr.kind}"${source}`);
   });
   console.log(`[effectiveAttrs] ====== End attributes for card ${id} ======\n`);
   

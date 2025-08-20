@@ -138,14 +138,27 @@ export function renderAttrRows(card) {
   // Render inherited attributes first (they use special indices)
   inherited.forEach((a, i) => {
     const keyPlaceholder = `${a.key} (from ${a.sourceCardName || 'parent'})`;
-    const valuePlaceholder = 'set value';
+    const valuePlaceholder = 'value'; // Changed from 'set value' to 'value' for consistency
     
-    console.log(`[renderAttrRows] Rendering inherited[${i}]: key="${a.key}" from ${a.sourceCardName}`);
+    console.log(`[renderAttrRows] Rendering inherited[${i}]: key="${a.key}" from ${a.sourceCardName}, kind="${a.kind}", value="${a.value}"`);
+    
+    // Check if the value is an entity or entity list
+    let cssClass = '';
+    let displayValue = a.value || '';
+    
+    if (a.kind === 'entityList' && a.entityIds && a.entityIds.length > 0) {
+      cssClass = 'entity';
+      displayValue = a.value || '';
+    } else if (a.kind === 'entity' && a.entityId) {
+      cssClass = 'entity';
+      displayValue = data.byId(a.entityId)?.name || a.value || '';
+    }
     
     html += `<div class="attr-row inherited" data-idx="${i}" data-inh="1">
       <input class="attr-key" readonly value="${escAttr(a.key || '')}" placeholder="${keyPlaceholder}" title="Inherited from ${a.sourceCardName || 'parent'}">
       <div class="attr-dropdown-wrapper">
-        <input class="attr-val" value="${escAttr(a.value || '')}" placeholder="${valuePlaceholder}" autocomplete="off">
+        <input class="attr-val ${cssClass}" value="${escAttr(displayValue)}" placeholder="${valuePlaceholder}" autocomplete="off">
+        <div class="attr-dropdown" id="dropdown-${card.id}-inh-${i}"></div>
       </div>
     </div>`;
   });
@@ -179,19 +192,16 @@ export function renderAttrRows(card) {
     </div>`;
   });
   
-  // Add empty row for new entries (only if we have owned attributes or no inherited)
-  const needsEmptyRow = owned.length > 0 || inherited.length === 0;
-  if (needsEmptyRow) {
-    const emptyIdx = owned.length;
-    console.log(`[renderAttrRows] Adding empty row at index ${emptyIdx}`);
-    html += `<div class="attr-row" data-idx="${emptyIdx}">
-      <input class="attr-key" value="" placeholder="key">
-      <div class="attr-dropdown-wrapper">
-        <input class="attr-val" value="" placeholder="value" autocomplete="off">
-        <div class="attr-dropdown" id="dropdown-${card.id}-${emptyIdx}"></div>
-      </div>
-    </div>`;
-  }
+  // Add empty row for new entries (ALWAYS show this for adding own attributes)
+  const emptyIdx = owned.length;
+  console.log(`[renderAttrRows] Adding empty row at index ${emptyIdx}`);
+  html += `<div class="attr-row" data-idx="${emptyIdx}">
+    <input class="attr-key" value="" placeholder="key">
+    <div class="attr-dropdown-wrapper">
+      <input class="attr-val" value="" placeholder="value" autocomplete="off">
+      <div class="attr-dropdown" id="dropdown-${card.id}-${emptyIdx}"></div>
+    </div>
+  </div>`;
   
   console.log(`[renderAttrRows] ====== End rendering for card ${card.id} ======\n`);
   return html;

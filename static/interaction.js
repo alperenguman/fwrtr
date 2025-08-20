@@ -226,7 +226,8 @@ document.addEventListener('mouseup', e => {
       const attrRow = target?.closest('.attr-row');
       const attrSection = target?.closest('.attr-list');
       
-      if (attrRow && !attrRow.classList.contains('inherited')) {
+      if (attrRow) {
+        // Works for both inherited and regular rows
         // Get the value input of this row
         const valInput = attrRow.querySelector('.attr-val');
         const keyInput = attrRow.querySelector('.attr-key');
@@ -246,8 +247,8 @@ document.addEventListener('mouseup', e => {
             valInput.value = draggedLinkEntityData.name;
           }
           
-          // If key is empty, auto-fill with a sensible default
-          if (!keyInput.value.trim()) {
+          // If key is empty and not inherited, auto-fill with a sensible default
+          if (!keyInput.value.trim() && !keyInput.hasAttribute('readonly')) {
             keyInput.value = 'entities';
           }
           
@@ -565,14 +566,13 @@ export function hydrateCard(cardId) {
       
       // Show dropdown on focus
       v.addEventListener('focus', () => {
-        if (!inh) {
-          updateDropdown();
-        }
+        // Allow dropdown for inherited attributes too
+        updateDropdown();
       });
       
       // Update dropdown on input
       v.addEventListener('input', () => {
-        if (!inh) updateDropdown();
+        updateDropdown();
       });
       
       // Hide dropdown on blur (with delay for clicks)
@@ -737,6 +737,25 @@ export function hydrateCard(cardId) {
             card.attributes.splice(fullIdx, 1);
           }
           
+          // CASCADE DELETE: Also remove overrides of this key from all children
+          const children = data.childrenOf.get(cardId);
+          if (children && children.size > 0) {
+            console.log(`[Commit] Cascading key deletion "${keyToRemove}" to ${children.size} children`);
+            
+            children.forEach(childId => {
+              const childCard = data.byId(childId);
+              if (childCard && childCard.attributes) {
+                // Remove any override for this key in the child
+                const childAttrIdx = childCard.attributes.findIndex(a => a.key === keyToRemove);
+                if (childAttrIdx >= 0) {
+                  console.log(`[Commit] Removing override for key "${keyToRemove}" from child ${childId}`);
+                  childCard.attributes.splice(childAttrIdx, 1);
+                }
+              }
+            });
+          }
+          
+          // Update this card's UI (which will cascade to children automatically)
           render.updateCardUI(cardId);
           return;
         }
@@ -799,6 +818,30 @@ export function hydrateCard(cardId) {
         const fullIdx = card.attributes.findIndex(a => a.key === oldKey && !inheritedKeys.has(a.key));
         if (fullIdx >= 0) {
           console.log(`[Commit] Updating attribute at full index ${fullIdx}`);
+          
+          // Check if the key is being renamed
+          if (oldKey !== key) {
+            console.log(`[Commit] Key renamed from "${oldKey}" to "${key}"`);
+            
+            // CASCADE RENAME: Update children's overrides to use new key name
+            const children = data.childrenOf.get(cardId);
+            if (children && children.size > 0) {
+              console.log(`[Commit] Cascading key rename to ${children.size} children`);
+              
+              children.forEach(childId => {
+                const childCard = data.byId(childId);
+                if (childCard && childCard.attributes) {
+                  // Find override with old key name
+                  const childAttr = childCard.attributes.find(a => a.key === oldKey);
+                  if (childAttr) {
+                    console.log(`[Commit] Renaming key in child ${childId} from "${oldKey}" to "${key}"`);
+                    childAttr.key = key;
+                  }
+                }
+              });
+            }
+          }
+          
           card.attributes[fullIdx] = newAttr;
         } else {
           // Shouldn't happen, but add as fallback
