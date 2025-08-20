@@ -152,13 +152,28 @@ export function renderAttrRows(card) {
   
   // Render owned attributes with their actual indices
   owned.forEach((a, i) => {
-    const ent = a.kind === 'entity';
-    console.log(`[renderAttrRows] Rendering own[${i}]: key="${a.key}", value="${a.value}", entity=${ent}`);
+    const isEntity = a.kind === 'entity';
+    const isEntityList = a.kind === 'entityList';
+    let displayValue = '';
+    let cssClass = '';
+    
+    if (isEntityList && a.entityIds && a.entityIds.length > 0) {
+      // For entity lists, show the names properly with same styling as single entities
+      displayValue = a.value || '';
+      cssClass = 'entity';  // Use same class as single entity
+    } else if (isEntity) {
+      displayValue = data.byId(a.entityId)?.name || a.value || '';
+      cssClass = 'entity';
+    } else {
+      displayValue = a.value || '';
+    }
+    
+    console.log(`[renderAttrRows] Rendering own[${i}]: key="${a.key}", value="${displayValue}", kind=${a.kind}`);
     
     html += `<div class="attr-row" data-idx="${i}">
       <input class="attr-key" value="${escAttr(a.key || '')}" placeholder="key">
       <div class="attr-dropdown-wrapper">
-        <input class="attr-val ${ent ? 'entity' : ''}" value="${escAttr(ent ? (data.byId(a.entityId)?.name || a.value) : (a.value || ''))}" placeholder="value" autocomplete="off">
+        <input class="attr-val ${cssClass}" value="${escAttr(displayValue)}" placeholder="value" autocomplete="off">
         <div class="attr-dropdown" id="dropdown-${card.id}-${i}"></div>
       </div>
     </div>`;

@@ -76,9 +76,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,Seg
 .caret.down{transform:rotate(90deg)}
 
 /* Attributes */
-.attr-list{display:block}
-.attr-row{display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed #1b1b1b}
+.attr-list{display:block;position:relative;min-height:28px}
+.attr-list.attr-drop-zone{background:rgba(0,255,136,.05);outline:1px dashed #00ff88;outline-offset:-1px}
+.attr-row{display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed #1b1b1b;position:relative}
 .attr-row:last-child{border-bottom:none}
+.attr-row.attr-row-drop-zone{background:rgba(0,255,136,.1);outline:1px solid #00ff88}
 .attr-key,.attr-val{background:transparent;border:none;border-bottom:1px dashed transparent;color:#ddd;padding:2px 4px;font-size:12px;outline:none}
 .attr-key:hover,.attr-val:hover{border-bottom-color:#2a2a2a}
 .attr-key:focus,.attr-val:focus{border-bottom-color:#ff5a5a}
@@ -162,10 +164,29 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,Seg
 
 /* Links */
 .link-list{display:block}
-.link-item{padding:4px 0;margin:0;cursor:pointer;font-size:12px;color:#00ff88;text-decoration:underline;text-decoration-style:dotted}
-.link-item:hover{color:#7dffc8}
+.link-item{padding:4px 8px;margin:2px 0;cursor:move;font-size:12px;color:#00ff88;text-decoration:underline;text-decoration-style:dotted;transition:all 0.15s;border-radius:0}
+.link-item:hover{color:#7dffc8;background:rgba(0,255,136,.08);transform:translateX(2px)}
+.link-item:active{background:rgba(0,255,136,.15);transform:scale(0.98)}
 .link-input{background:#0b0b0b;border:1px solid #222;color:#e6e6e6;border-radius:0;padding:2px 4px;font:inherit;line-height:1.3;outline:none}
 .link-input:focus{border-color:#ff5a5a}
+
+/* Link drag ghost */
+.link-entity-ghost{
+  background:#00ff88;
+  color:#000;
+  padding:4px 8px;
+  font-size:11px;
+  font-weight:700;
+  border-radius:0;
+  box-shadow:0 4px 12px rgba(0,255,136,.4);
+  cursor:move;
+  animation:ghostPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes ghostPulse {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
 
 /* Link animation */
 @keyframes linkPulse {

@@ -15,6 +15,11 @@ let hover = null;
 const LINK_ZONE_HEIGHT = 60; // Increased from 40 for better usability
 const LINK_ZONE_VISUAL_FEEDBACK = true;
 
+// ---------- Link Entity Drag State ----------
+let draggingLinkEntity = false;
+let draggedLinkEntityData = null; // {name, id, sourceCardId}
+let dragGhost = null;
+
 // ---------- Plane Dragging ----------
 let draggingPlane = false, planeStartX = 0, planeStartY = 0;
 
@@ -41,6 +46,8 @@ export function selectCard(e) {
 export function startCardDrag(e) { 
   if (e.button !== 0) return; 
   if (e.target.closest('.card-text') || e.target.tagName === 'INPUT') return; 
+  // Prevent card drag when clicking on link items
+  if (e.target.closest('.link-item')) return;
   
   const box = e.currentTarget; 
   const id = parseInt(box.id.split('-')[1]); 
@@ -68,10 +75,62 @@ export function startCardDrag(e) {
   }); 
 }
 
+// ---------- Link Entity Dragging ----------
+function startLinkEntityDrag(e, linkName, linkId, sourceCardId) {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  draggingLinkEntity = true;
+  draggedLinkEntityData = { name: linkName, id: linkId, sourceCardId: sourceCardId };
+  
+  // Create ghost element
+  dragGhost = document.createElement('div');
+  dragGhost.className = 'link-entity-ghost';
+  dragGhost.textContent = linkName;
+  dragGhost.style.position = 'fixed';
+  dragGhost.style.left = e.clientX + 'px';
+  dragGhost.style.top = e.clientY + 'px';
+  dragGhost.style.pointerEvents = 'none';
+  dragGhost.style.zIndex = '10000';
+  document.body.appendChild(dragGhost);
+  
+  // Prevent text selection and default drag
+  return false;
+}
+
 // ---------- Mouse Movement Handler ----------
 document.addEventListener('mousemove', e => { 
   const coords = viewport.getWorldCoords(e.clientX, e.clientY);
   const wx = coords.wx, wy = coords.wy; 
+  
+  // Handle link entity dragging
+  if (draggingLinkEntity && dragGhost) {
+    dragGhost.style.left = (e.clientX + 10) + 'px';
+    dragGhost.style.top = (e.clientY - 10) + 'px';
+    
+    // Find what we're hovering over
+    dragGhost.style.display = 'none'; // Temporarily hide to get element below
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    dragGhost.style.display = '';
+    
+    // Clear previous drop zone highlights
+    document.querySelectorAll('.attr-drop-zone').forEach(el => el.classList.remove('attr-drop-zone'));
+    document.querySelectorAll('.attr-row-drop-zone').forEach(el => el.classList.remove('attr-row-drop-zone'));
+    
+    // Check if we're over an attribute section
+    const attrSection = target?.closest('.attr-list');
+    if (attrSection) {
+      attrSection.classList.add('attr-drop-zone');
+      
+      // Check if we're over a specific attribute row
+      const attrRow = target?.closest('.attr-row');
+      if (attrRow) {
+        attrRow.classList.add('attr-row-drop-zone');
+      }
+    }
+    
+    return; // Don't process other drag operations
+  }
   
   if (dragging) { 
     const dx = wx - dragStartX, dy = wy - dragStartY; 
@@ -155,6 +214,87 @@ document.addEventListener('mousemove', e => {
 
 // ---------- Mouse Up Handler ----------
 document.addEventListener('mouseup', e => { 
+  // Handle link entity drop
+  if (draggingLinkEntity) {
+    if (dragGhost) {
+      dragGhost.style.display = 'none';
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      dragGhost.remove();
+      dragGhost = null;
+      
+      // Check if we dropped on an attribute row
+      const attrRow = target?.closest('.attr-row');
+      const attrSection = target?.closest('.attr-list');
+      
+      if (attrRow && !attrRow.classList.contains('inherited')) {
+        // Get the value input of this row
+        const valInput = attrRow.querySelector('.attr-val');
+        const keyInput = attrRow.querySelector('.attr-key');
+        
+        if (valInput) {
+          const currentVal = valInput.value.trim();
+          
+          // If the value already contains entities (comma-separated), add to the list
+          if (currentVal && currentVal.includes(',')) {
+            // Already a list, append
+            valInput.value = currentVal + ', ' + draggedLinkEntityData.name;
+          } else if (currentVal && currentVal !== draggedLinkEntityData.name) {
+            // Single value exists, convert to list
+            valInput.value = currentVal + ', ' + draggedLinkEntityData.name;
+          } else {
+            // Empty or replace
+            valInput.value = draggedLinkEntityData.name;
+          }
+          
+          // If key is empty, auto-fill with a sensible default
+          if (!keyInput.value.trim()) {
+            keyInput.value = 'entities';
+          }
+          
+          // Trigger change event to save
+          valInput.dispatchEvent(new Event('blur'));
+        }
+      } else if (attrSection) {
+        // Dropped on attribute section but not on a specific row
+        // Find the card ID from the attribute section
+        const cardId = parseInt(attrSection.id.split('-')[1]);
+        const card = data.byId(cardId);
+        
+        if (card) {
+          // Find the last non-inherited empty row or create new
+          const rows = attrSection.querySelectorAll('.attr-row:not(.inherited)');
+          let targetRow = null;
+          
+          // Look for an empty row
+          for (let row of rows) {
+            const keyInput = row.querySelector('.attr-key');
+            const valInput = row.querySelector('.attr-val');
+            if (!keyInput.value.trim() && !valInput.value.trim()) {
+              targetRow = row;
+              break;
+            }
+          }
+          
+          if (targetRow) {
+            const keyInput = targetRow.querySelector('.attr-key');
+            const valInput = targetRow.querySelector('.attr-val');
+            keyInput.value = 'entity';
+            valInput.value = draggedLinkEntityData.name;
+            valInput.dispatchEvent(new Event('blur'));
+          }
+        }
+      }
+      
+      // Clean up drop zone highlights
+      document.querySelectorAll('.attr-drop-zone').forEach(el => el.classList.remove('attr-drop-zone'));
+      document.querySelectorAll('.attr-row-drop-zone').forEach(el => el.classList.remove('attr-row-drop-zone'));
+    }
+    
+    draggingLinkEntity = false;
+    draggedLinkEntityData = null;
+    return;
+  }
+  
   if (dragging) { 
     viewport.saveCurrentLayout(); 
     
@@ -499,26 +639,61 @@ export function hydrateCard(cardId) {
         // Find if we already have an override for this key
         const existingIdx = (card.attributes || []).findIndex(a => a.key === key);
         
-        const match = data.resolveEntityByNameFromLinked(val, cardId); 
-        console.log(`[Commit] Entity match for "${val}":`, match);
-        
-        if (!val) {
-          // Empty value - remove the override if it exists
-          if (existingIdx >= 0) {
-            console.log(`[Commit] Removing override for inherited key "${key}"`);
-            card.attributes.splice(existingIdx, 1);
-          }
-        } else {
-          // Non-empty value - store as override
-          const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'}; 
+        // Handle list values (comma-separated)
+        if (val && val.includes(',')) {
+          // Split and clean up the list
+          const values = val.split(',').map(v => v.trim()).filter(v => v);
+          // Try to resolve each value as an entity
+          const resolvedEntities = [];
+          const entityIds = [];
+          
+          values.forEach(v => {
+            const match = data.resolveEntityByNameFromLinked(v, cardId);
+            if (match) {
+              resolvedEntities.push(match.name);
+              entityIds.push(match.id);
+            } else {
+              resolvedEntities.push(v);
+              entityIds.push(null);
+            }
+          });
+          
+          const newAttr = {
+            key, 
+            value: resolvedEntities.join(', '), 
+            kind: 'entityList', 
+            entityIds: entityIds.filter(id => id !== null),
+            values: resolvedEntities
+          };
           
           if (existingIdx >= 0) {
-            console.log(`[Commit] Updating existing override at index ${existingIdx}`);
-            card.attributes[existingIdx] = newAttr; 
-          } else { 
-            console.log(`[Commit] Adding new override for inherited key`);
-            card.attributes = card.attributes || []; 
-            card.attributes.push(newAttr); 
+            card.attributes[existingIdx] = newAttr;
+          } else {
+            card.attributes = card.attributes || [];
+            card.attributes.push(newAttr);
+          }
+        } else {
+          const match = data.resolveEntityByNameFromLinked(val, cardId); 
+          console.log(`[Commit] Entity match for "${val}":`, match);
+          
+          if (!val) {
+            // Empty value - remove the override if it exists
+            if (existingIdx >= 0) {
+              console.log(`[Commit] Removing override for inherited key "${key}"`);
+              card.attributes.splice(existingIdx, 1);
+            }
+          } else {
+            // Non-empty value - store as override
+            const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'}; 
+            
+            if (existingIdx >= 0) {
+              console.log(`[Commit] Updating existing override at index ${existingIdx}`);
+              card.attributes[existingIdx] = newAttr; 
+            } else { 
+              console.log(`[Commit] Adding new override for inherited key`);
+              card.attributes = card.attributes || []; 
+              card.attributes.push(newAttr); 
+            }
           }
         }
         
@@ -576,11 +751,40 @@ export function hydrateCard(cardId) {
         return; 
       }
       
-      // Setting or updating an attribute
-      const match = data.resolveEntityByNameFromLinked(val, cardId); 
-      console.log(`[Commit] Entity match for "${val}":`, match);
-      
-      const newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'};
+      // Handle list values (comma-separated)
+      let newAttr;
+      if (val && val.includes(',')) {
+        // Split and clean up the list
+        const values = val.split(',').map(v => v.trim()).filter(v => v);
+        // Try to resolve each value as an entity
+        const resolvedEntities = [];
+        const entityIds = [];
+        
+        values.forEach(v => {
+          const match = data.resolveEntityByNameFromLinked(v, cardId);
+          if (match) {
+            resolvedEntities.push(match.name);
+            entityIds.push(match.id);
+          } else {
+            resolvedEntities.push(v);
+            entityIds.push(null);
+          }
+        });
+        
+        newAttr = {
+          key, 
+          value: resolvedEntities.join(', '), 
+          kind: 'entityList', 
+          entityIds: entityIds.filter(id => id !== null),
+          values: resolvedEntities
+        };
+      } else {
+        // Setting or updating a single attribute
+        const match = data.resolveEntityByNameFromLinked(val, cardId); 
+        console.log(`[Commit] Entity match for "${val}":`, match);
+        
+        newAttr = match ? {key, value: match.name, kind: 'entity', entityId: match.id} : {key, value: val, kind: 'text'};
+      }
       
       // Ensure card.attributes exists
       if (!card.attributes) card.attributes = [];
@@ -665,7 +869,7 @@ export function hydrateCard(cardId) {
     k._eventsBound = true;
   });
 
-  // Linked entities handlers
+  // Linked entities handlers with drag support
   const linksContainer = root.querySelector('#links-' + cardId);
   if (!linksContainer) {
     return;
@@ -681,6 +885,24 @@ export function hydrateCard(cardId) {
     }
     
     const linkId = parseInt(it.dataset.id);
+    const linkName = it.textContent.trim();
+    
+    // Make link item draggable
+    it.draggable = true;
+    
+    // Prevent default drag behavior and use our custom implementation
+    it.addEventListener('mousedown', function(e) {
+      e.stopPropagation(); // Prevent card from being dragged
+      if (e.button === 0) { // Left click only
+        startLinkEntityDrag(e, linkName, linkId, cardId);
+      }
+    });
+    
+    // Prevent browser's default drag
+    it.addEventListener('dragstart', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    });
     
     // Right-click handler - unlink
     it.addEventListener('contextmenu', function(e) {

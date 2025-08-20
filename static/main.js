@@ -67,7 +67,7 @@ function initializeApp() {
   // Initialize interactions
   interaction.init();
   
-  console.log('Strywrtr initialized successfully');
+  console.log('Fractal Wrtr initialized successfully');
 }
 
 // Start the app when DOM is ready
