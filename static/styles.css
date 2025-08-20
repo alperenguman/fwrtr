@@ -86,6 +86,138 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,Seg
 .card-text.editing{outline:1px solid #ff5a5a;white-space:pre-wrap}
 .card-text.editing .entity-link{pointer-events:none;text-decoration:none}
 
+/* Representations Section */
+.representations-section{
+  display:block;
+  min-height:40px;
+  margin-bottom:10px;
+  position:relative;
+}
+.representations-section.drag-over{
+  background:rgba(0,255,136,.05);
+  outline:1px dashed #00ff88;
+}
+.no-representations{
+  opacity:.6;
+  font-size:11px;
+  text-align:center;
+  padding:10px;
+}
+
+/* Media Gallery */
+.media-gallery{
+  position:relative;
+  background:#0a0a0a;
+  border:1px solid #1a1a1a;
+  overflow:hidden;
+}
+.media-viewport{
+  position:relative;
+  width:100%;
+  height:160px;
+  overflow:hidden;
+}
+.media-container{
+  display:flex;
+  height:100%;
+  transition:transform 0.3s ease;
+  gap:8px;
+  padding:8px;
+  min-width:100%;
+  justify-content:center; /* Center items when not filling width */
+}
+.media-item{
+  flex-shrink:0;
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:auto;
+}
+.media-item img{
+  height:100%;
+  width:auto;
+  max-width:100%;
+  object-fit:contain;
+  user-select:none;
+  -webkit-user-drag:none;
+}
+.media-item.media-video{
+  min-width:240px;
+}
+.media-item video{
+  height:100%;
+  width:100%;
+  max-width:240px;
+  object-fit:contain;
+}
+.media-placeholder{
+  color:#666;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:1px;
+  padding:20px;
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  user-select:none;
+}
+
+/* Gallery Navigation */
+.gallery-nav{
+  position:absolute;
+  top:50%;
+  transform:translateY(-50%);
+  background:rgba(0,0,0,.7);
+  border:1px solid #333;
+  color:#fff;
+  width:24px;
+  height:48px;
+  font-size:18px;
+  cursor:pointer;
+  z-index:10;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  opacity:0;
+  transition:opacity 0.2s;
+}
+.media-gallery:hover .gallery-nav{
+  opacity:0.7;
+}
+.gallery-nav:hover{
+  opacity:1 !important;
+  background:rgba(0,0,0,.9);
+}
+.gallery-prev{left:4px}
+.gallery-next{right:4px}
+
+/* Gallery Indicators */
+.gallery-indicators{
+  position:absolute;
+  bottom:8px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:6px;
+  z-index:10;
+}
+.indicator{
+  width:6px;
+  height:6px;
+  background:rgba(255,255,255,.3);
+  cursor:pointer;
+  transition:background 0.2s;
+}
+.indicator.active{
+  background:rgba(255,255,255,.8);
+}
+.indicator:hover{
+  background:rgba(255,255,255,.6);
+}
+
 /* Sections */
 .section-header{padding:6px 0;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:11px;color:#bdbdbd;text-transform:uppercase;letter-spacing:.6px}
 .caret{transition:transform .18s ease;display:inline-block}
@@ -234,6 +366,23 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,Seg
 #backgroundText.bg-ambient{animation:bgFloat 8s ease-in-out infinite;filter:blur(.2px)}
 @keyframes bgFloat{0%{transform:translate(-50%,-50%) scale(1) rotate(0deg);opacity:.05}50%{transform:translate(-50%,-50%) scale(1.02) rotate(.6deg);opacity:.07}100%{transform:translate(-50%,-50%) scale(1) rotate(0deg);opacity:.05}}
 #planeLabel{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;font-size:64px;letter-spacing:.06em;color:rgba(255,255,255,.08);font-weight:800;text-transform:uppercase;pointer-events:none;z-index:2;text-shadow:0 2px 20px rgba(0,0,0,.4);display:none}
+
+/* Sync Indicator */
+.sync-indicator{
+  background:#0a0a0a;
+  border:1px solid #1b1b1b;
+  padding:6px 12px;
+  font-size:11px;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.8px;
+  margin-left:auto;
+}
+.sync-indicator.saved{color:#666}
+.sync-indicator.modified{color:#ffa500}
+.sync-indicator.syncing{color:#00ff88;animation:pulse 1s ease-in-out infinite}
+.sync-indicator.error{color:#ff5a5a}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 
 /* HUD */
 #breadcrumb{position:fixed;top:68px;left:20px;background:#0a0a0a;border:1px solid #1b1b1b;padding:8px 12px;font-size:12px;color:#aaa;z-index:10000;display:none}

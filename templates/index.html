@@ -13,6 +13,9 @@
     <button class="tool-btn" onclick="createCard()">New Card</button>
     <button class="tool-btn" onclick="deleteSelected()">Delete</button>
     <button class="tool-btn" onclick="resetView()">Reset View</button>
+    <button class="tool-btn" onclick="syncNow()">Sync Now</button>
+    <button class="tool-btn" onclick="exportData()">Export</button>
+    <button class="tool-btn" onclick="importData()">Import</button>
   </div>
 
   <div id="breadcrumb"></div>
@@ -22,6 +25,7 @@
   <div id="planeLabel"></div>
 
   <!-- Load modules - note the type="module" -->
+  <script type="module" src="{{ url_for('static', filename='persistence.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 </html>

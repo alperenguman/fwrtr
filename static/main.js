@@ -5,6 +5,10 @@ import * as data from './data.js';
 import * as viewport from './viewport.js';
 import * as render from './render.js';
 import * as interaction from './interaction.js';
+import * as persistence from './persistence.js';
+
+// Make persistence available globally for data module
+window.persistence = persistence;
 
 // ---------- Global API ----------
 window.createCard = function(x, y) {
@@ -50,22 +54,54 @@ window.toggleSection = render.toggleSection;
 window.focusOn = viewport.focusOn;
 window.hydrateCard = interaction.hydrateCard;
 
+// Expose persistence functions
+window.syncNow = () => persistence.syncToBackend();
+window.exportData = () => persistence.exportData();
+window.importData = () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (file) persistence.importData(file);
+  };
+  input.click();
+};
+window.clearData = () => persistence.clearLocalData();
+
 // ---------- Application Initialization ----------
 function initializeApp() {
+  // Initialize persistence first
+  persistence.init();
+  
+  // Try to load saved state
+  const hasLocalData = persistence.loadFromLocal();
+  
   // Initialize viewport
   viewport.init();
   
-  // Seed initial data
-  const cards = data.seed();
-  
-  // Setup initial layout
-  viewport.setupInitialLayout(cards);
+  if (!hasLocalData) {
+    // No saved data - seed initial data
+    const cards = data.seed();
+    
+    // Setup initial layout
+    viewport.setupInitialLayout(cards);
+    
+    // Save initial state
+    persistence.saveToLocal();
+  } else {
+    // We loaded saved data
+    console.log('Loaded saved state from local storage');
+  }
   
   // Render initial plane
   render.renderPlane(null);
   
   // Initialize interactions
   interaction.init();
+  
+  // Start auto-sync
+  persistence.startAutoSync();
   
   console.log('Fractal Wrtr initialized successfully');
 }

@@ -6,10 +6,22 @@ export let all = [];
 export let nextId = 1;
 export const byId = id => all.find(c => c.id === id);
 
+// Set function for restoring data
+export function setAll(newAll) { all = newAll; }
+export function setNextId(newId) { nextId = newId; }
+
 // ---------- Relationships ----------
 export const parentsOf = new Map();   // child -> Set(parent)
 export const childrenOf = new Map();  // parent -> Set(child) - EXPORTED for cascade updates
 export const links = new Map();       // undirected influence graph
+
+// ---------- Change Notification ----------
+function notifyChange() {
+  // Notify persistence layer of changes
+  if (window.persistence && window.persistence.markDirty) {
+    window.persistence.markDirty();
+  }
+}
 
 // Helper to ensure Set exists in Map
 export const ensure = (map, k) => { 
@@ -59,11 +71,43 @@ export function createCard(x, y) {
     name: 'Entity ' + (nextId - 1),
     type: null, // Type determined by inheritance
     content: '',
-    attributes: []
+    attributes: [],
+    representations: [] // Array of media URLs/data
   }; 
   
   all.push(c); 
   return c; 
+}
+
+// Add media representation to a card
+export function addRepresentation(cardId, mediaUrl) {
+  const card = byId(cardId);
+  if (!card) return false;
+  
+  if (!card.representations) {
+    card.representations = [];
+  }
+  
+  // Avoid duplicates
+  if (!card.representations.includes(mediaUrl)) {
+    card.representations.push(mediaUrl);
+    console.log(`[addRepresentation] Added media to card ${cardId}: ${mediaUrl}`);
+    return true;
+  }
+  return false;
+}
+
+// Remove media representation from a card
+export function removeRepresentation(cardId, index) {
+  const card = byId(cardId);
+  if (!card || !card.representations) return false;
+  
+  if (index >= 0 && index < card.representations.length) {
+    const removed = card.representations.splice(index, 1);
+    console.log(`[removeRepresentation] Removed media from card ${cardId}: ${removed[0]}`);
+    return true;
+  }
+  return false;
 }
 
 export function deleteCard(id) { 
@@ -308,7 +352,8 @@ export function seed() {
     name: 'Sarah Chen',
     type: null, // Type will be determined by inheritance
     content: 'A marine biologist studying deep-sea creatures. She works at The Research Station and is concerned about the Strange Readings.',
-    attributes: []
+    attributes: [],
+    representations: [] // Empty media array
   };
   
   const b = {
@@ -316,7 +361,8 @@ export function seed() {
     name: 'The Research Station',
     type: null, // Type will be determined by inheritance
     content: 'A remote underwater facility 200 meters below the Pacific Ocean surface. Sarah Chen conducts her research here.',
-    attributes: []
+    attributes: [],
+    representations: [] // Empty media array
   };
   
   const d = {
@@ -324,7 +370,8 @@ export function seed() {
     name: 'Strange Readings',
     type: null, // Type will be determined by inheritance
     content: 'Sonar equipment detects unusual patterns below The Research Station. Sarah Chen is investigating.',
-    attributes: []
+    attributes: [],
+    representations: [] // Empty media array
   };
   
   all.push(a, b, d);

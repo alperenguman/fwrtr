@@ -485,6 +485,8 @@ export function hydrateCard(cardId) {
       t.classList.remove('editing'); 
       t.innerHTML = render.linkify(render.esc(card.content || ''), cardId); 
       if (viewport.currentPlane === cardId) viewport.showBG(); 
+      // Notify persistence of change
+      if (window.persistence) window.persistence.markDirty();
     });
     
     t.addEventListener('keydown', e => { 
@@ -849,6 +851,9 @@ export function hydrateCard(cardId) {
         }
       }
       
+      // Notify persistence of change
+      if (window.persistence) window.persistence.markDirty();
+      
       // Add new row on Enter with content
       if (addNewRow && key && val) {
         console.log(`[Commit] Checking if should add new row`);
@@ -912,6 +917,243 @@ export function hydrateCard(cardId) {
     k._eventsBound = true;
   });
 
+  // Representations section handlers
+  const repsSection = root.querySelector('#reps-' + cardId);
+  if (repsSection && !repsSection._eventsBound) {
+    // Drag over handler
+    repsSection.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.classList.add('drag-over');
+    });
+    
+    // Drag leave handler
+    repsSection.addEventListener('dragleave', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.classList.remove('drag-over');
+    });
+    
+    // Drop handler for media files
+    repsSection.addEventListener('drop', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.classList.remove('drag-over');
+      
+      const files = e.dataTransfer.files;
+      const urls = e.dataTransfer.getData('text/uri-list');
+      const url = e.dataTransfer.getData('text/plain');
+      
+      // Handle file drops
+      if (files && files.length > 0) {
+        Array.from(files).forEach(file => {
+          if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+            // Read file as data URL instead of object URL for better persistence
+            const reader = new FileReader();
+            reader.onload = function(event) {
+              const mediaUrl = event.target.result;
+              if (data.addRepresentation(cardId, mediaUrl)) {
+                render.updateCardUI(cardId);
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+        });
+      }
+      // Handle URL drops
+      else if (urls || url) {
+        const mediaUrl = (urls || url).trim();
+        // More permissive URL validation - accept any URL that might be an image/video
+        if (mediaUrl.startsWith('http://') || 
+            mediaUrl.startsWith('https://') || 
+            mediaUrl.startsWith('data:')) {
+          if (data.addRepresentation(cardId, mediaUrl)) {
+            render.updateCardUI(cardId);
+          }
+        }
+      }
+    });
+    
+    // Right-click to remove media
+    repsSection.addEventListener('contextmenu', function(e) {
+      const mediaItem = e.target.closest('.media-item');
+      if (mediaItem) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const index = parseInt(mediaItem.dataset.index);
+        if (data.removeRepresentation(cardId, index)) {
+          // Visual feedback
+          mediaItem.style.opacity = '0.3';
+          setTimeout(() => {
+            render.updateCardUI(cardId);
+          }, 200);
+        }
+      }
+    });
+    
+    // Gallery navigation
+    const prevBtn = repsSection.querySelector('.gallery-prev');
+    const nextBtn = repsSection.querySelector('.gallery-next');
+    const mediaViewport = repsSection.querySelector('.media-viewport');
+    const mediaContainer = repsSection.querySelector('.media-container');
+    const indicatorsContainer = repsSection.querySelector('.gallery-indicators');
+    
+    if (mediaContainer && mediaViewport) {
+      const mediaItems = mediaContainer.querySelectorAll('.media-item');
+      const totalItems = mediaItems.length;
+      
+      let currentPosition = 0;
+      
+      // Calculate scroll limits
+      function getScrollInfo() {
+        const containerWidth = mediaContainer.scrollWidth;
+        const viewportWidth = mediaViewport.offsetWidth;
+        const maxScroll = Math.max(0, containerWidth - viewportWidth);
+        const scrollStep = viewportWidth * 0.8; // Scroll 80% of viewport
+        const totalSteps = Math.ceil(maxScroll / scrollStep);
+        return { containerWidth, viewportWidth, maxScroll, scrollStep, totalSteps };
+      }
+      
+      // Update scroll position
+      function scrollToPosition(position) {
+        const { maxScroll, scrollStep } = getScrollInfo();
+        const targetScroll = Math.min(position * scrollStep, maxScroll);
+        
+        // Apply transform with transition
+        mediaContainer.style.transition = 'transform 0.3s ease';
+        mediaContainer.style.transform = `translateX(${-targetScroll}px)`;
+        
+        currentPosition = position;
+        updateIndicators();
+      }
+      
+      // Update indicators
+      function updateIndicators() {
+        if (!indicatorsContainer) return;
+        
+        const indicators = indicatorsContainer.querySelectorAll('.indicator');
+        indicators.forEach((ind, i) => {
+          ind.classList.toggle('active', i === currentPosition);
+        });
+      }
+      
+      // Create indicators
+      function createIndicators() {
+        if (!indicatorsContainer) return;
+        
+        const { containerWidth, viewportWidth, totalSteps } = getScrollInfo();
+        
+        if (containerWidth <= viewportWidth) {
+          // Content fits, hide navigation
+          indicatorsContainer.innerHTML = '';
+          if (prevBtn) prevBtn.style.display = 'none';
+          if (nextBtn) nextBtn.style.display = 'none';
+          return;
+        }
+        
+        // Show navigation
+        if (prevBtn) prevBtn.style.display = '';
+        if (nextBtn) nextBtn.style.display = '';
+        
+        // Create indicators for each step
+        indicatorsContainer.innerHTML = '';
+        for (let i = 0; i <= totalSteps; i++) {
+          const indicator = document.createElement('span');
+          indicator.className = 'indicator' + (i === 0 ? ' active' : '');
+          indicator.dataset.position = i;
+          indicator.addEventListener('click', function(e) {
+            e.stopPropagation();
+            scrollToPosition(parseInt(this.dataset.position));
+          });
+          indicatorsContainer.appendChild(indicator);
+        }
+      }
+      
+      // Navigation buttons
+      if (prevBtn) {
+        prevBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const { totalSteps } = getScrollInfo();
+          
+          if (currentPosition > 0) {
+            scrollToPosition(currentPosition - 1);
+          } else {
+            // Wrap to end
+            scrollToPosition(totalSteps);
+          }
+        });
+      }
+      
+      if (nextBtn) {
+        nextBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const { totalSteps } = getScrollInfo();
+          
+          if (currentPosition < totalSteps) {
+            scrollToPosition(currentPosition + 1);
+          } else {
+            // Wrap to beginning
+            scrollToPosition(0);
+          }
+        });
+      }
+      
+      // Initialize gallery
+      function initializeGallery() {
+        // Wait for images to load
+        let loadedCount = 0;
+        const images = mediaContainer.querySelectorAll('img');
+        
+        function setupGallery() {
+          createIndicators();
+          scrollToPosition(0);
+        }
+        
+        if (images.length === 0) {
+          setupGallery();
+        } else {
+          images.forEach(img => {
+            if (img.complete) {
+              loadedCount++;
+              if (loadedCount === images.length) {
+                setupGallery();
+              }
+            } else {
+              img.addEventListener('load', () => {
+                loadedCount++;
+                if (loadedCount === images.length) {
+                  setupGallery();
+                }
+              });
+            }
+          });
+          
+          // Fallback after timeout
+          setTimeout(setupGallery, 500);
+        }
+      }
+      
+      initializeGallery();
+      
+      // Handle window resize
+      let resizeTimer;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          createIndicators();
+          // Adjust position if needed
+          const { totalSteps } = getScrollInfo();
+          if (currentPosition > totalSteps) {
+            scrollToPosition(totalSteps);
+          }
+        }, 250);
+      });
+    }
+    
+    repsSection._eventsBound = true;
+  }
+  
   // Type pill handlers for breaking inheritance
   const typesContainer = root.querySelector('.card-types');
   if (typesContainer && !typesContainer._eventsBound) {

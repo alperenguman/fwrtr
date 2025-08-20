@@ -91,6 +91,11 @@ export function renderCard(v) {
     <div class="card-content">
       <div class="card-types" data-card-id="${c.id}">${typePillsHTML}</div>
 
+      <div class="section-header" onclick="toggleSection('reps',${c.id})">
+        <span class="caret down" id="caret-reps-${c.id}">▶</span> Representations
+      </div>
+      <div class="representations-section" id="reps-${c.id}" data-card-id="${c.id}">${renderRepresentations(c)}</div>
+
       <div class="section-header" onclick="toggleSection('attrs',${c.id})">
         <span class="caret down" id="caret-attrs-${c.id}">▶</span> Attributes
       </div>
@@ -108,6 +113,66 @@ export function renderCard(v) {
   plane.appendChild(el);
   
   // Note: Event handlers will be attached by interaction.js
+}
+
+// Render representations gallery
+export function renderRepresentations(card) {
+  const reps = card.representations || [];
+  
+  if (reps.length === 0) {
+    return '<div class="no-representations">No media<br><span style="opacity:.5;font-size:10px">Drag images/videos here</span></div>';
+  }
+  
+  const multiple = reps.length > 1;
+  let html = '<div class="media-gallery">';
+  
+  if (multiple) {
+    html += '<button class="gallery-nav gallery-prev" data-card-id="' + card.id + '">‹</button>';
+    html += '<button class="gallery-nav gallery-next" data-card-id="' + card.id + '">›</button>';
+  }
+  
+  html += '<div class="media-viewport" data-current-group="0">';
+  html += '<div class="media-container">';
+  
+  reps.forEach((mediaUrl, index) => {
+    // Better media type detection
+    const isDataUrl = mediaUrl.startsWith('data:');
+    const isImage = isDataUrl ? mediaUrl.startsWith('data:image/') : 
+                    (/\.(jpg|jpeg|png|gif|webp|svg)/i.test(mediaUrl) || 
+                     /\/(image|img|photo|picture)\//i.test(mediaUrl));
+    const isVideo = isDataUrl ? mediaUrl.startsWith('data:video/') : 
+                    (/\.(mp4|webm|ogg)/i.test(mediaUrl) || 
+                     /\/(video|vid|movie|clip)\//i.test(mediaUrl));
+    
+    // Always try to display as image first if not clearly video
+    if (!isVideo) {
+      html += `<div class="media-item" data-index="${index}">
+        <img src="${escAttr(mediaUrl)}" alt="Representation ${index + 1}" 
+             loading="lazy"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+        <div class="media-placeholder" style="display:none;">Media ${index + 1}<br><span style="opacity:0.5;font-size:10px">${escAttr(mediaUrl.substring(0, 50))}</span></div>
+      </div>`;
+    } else {
+      html += `<div class="media-item media-video" data-index="${index}">
+        <video controls>
+          <source src="${escAttr(mediaUrl)}" />
+          Your browser does not support the video tag.
+        </video>
+      </div>`;
+    }
+  });
+  
+  html += '</div>';
+  html += '</div>';
+  
+  if (multiple) {
+    // Indicators will be updated dynamically based on groups
+    html += '<div class="gallery-indicators" data-total="' + reps.length + '"></div>';
+  }
+  
+  html += '</div>';
+  
+  return html;
 }
 
 // Get options only from linked entities - NO LONGER NEEDED
@@ -262,6 +327,12 @@ export function updateCardUI(cardId, focusNew = false) {
     }
   }
   
+  // Update representations
+  const repsSection = el.querySelector('#reps-' + cardId);
+  if (repsSection) {
+    repsSection.innerHTML = renderRepresentations(c);
+  }
+  
   const oldAttrsHTML = el.querySelector('#attrs-' + cardId).innerHTML;
   const newAttrsHTML = renderAttrRows(c);
   
@@ -326,5 +397,10 @@ export function toggleSection(kind, id) {
         updateCardUI(id);
       }
     }
+  }
+  
+  // Re-hydrate gallery navigation if opening representations
+  if (!open && kind === 'reps' && typeof window.hydrateCard === 'function') {
+    setTimeout(() => window.hydrateCard(id), 0);
   }
 }
