@@ -48,9 +48,10 @@ export function renderPlane(pid) {
   viewport.setClones(lay.cards.map(v => ({...v}))); 
   viewport.setViewport(lay.viewX || 0, lay.viewY || 0, 1); 
   
+  // Render all cards immediately
   viewport.clones.forEach(v => renderCard(v)); 
   
-  // Hydrate all cards after rendering
+  // Hydrate cards immediately for basic functionality
   setTimeout(() => {
     viewport.clones.forEach(v => {
       if (typeof window.hydrateCard === 'function') {
@@ -111,8 +112,6 @@ export function renderCard(v) {
   
   const plane = document.getElementById('plane');
   plane.appendChild(el);
-  
-  // Note: Event handlers will be attached by interaction.js
 }
 
 // Render representations gallery
@@ -166,7 +165,7 @@ export function renderRepresentations(card) {
   html += '</div>';
   
   if (multiple) {
-    // Indicators will be updated dynamically based on groups
+    // Indicators will be updated dynamically
     html += '<div class="gallery-indicators" data-total="' + reps.length + '"></div>';
   }
   
@@ -175,7 +174,7 @@ export function renderRepresentations(card) {
   return html;
 }
 
-// Get options only from linked entities - NO LONGER NEEDED
+// Get options only from linked entities
 export function getLinkedEntitiesOptions(cardId) {
   const linkedIds = Array.from(data.links.get(cardId) || new Set());
   return linkedIds.map(id => data.byId(id)).filter(Boolean).map(e => `<option value="${escAttr(e.name)}">`).join('');
@@ -330,6 +329,8 @@ export function updateCardUI(cardId, focusNew = false) {
   // Update representations
   const repsSection = el.querySelector('#reps-' + cardId);
   if (repsSection) {
+    // Clear gallery initialization flag before updating HTML
+    repsSection._galleryInitialized = false;
     repsSection.innerHTML = renderRepresentations(c);
   }
   
@@ -399,7 +400,7 @@ export function toggleSection(kind, id) {
     }
   }
   
-  // Re-hydrate gallery navigation if opening representations
+  // Re-hydrate to initialize gallery if opening representations
   if (!open && kind === 'reps' && typeof window.hydrateCard === 'function') {
     setTimeout(() => window.hydrateCard(id), 0);
   }

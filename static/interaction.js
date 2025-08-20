@@ -23,6 +23,177 @@ let dragGhost = null;
 // ---------- Plane Dragging ----------
 let draggingPlane = false, planeStartX = 0, planeStartY = 0;
 
+// ---------- Gallery Initialization Queue ----------
+let galleryInitQueue = new Set();
+let galleryInitTimer = null;
+
+// Process gallery initialization queue
+function processGalleryQueue() {
+  if (galleryInitQueue.size === 0) return;
+  
+  // Process all pending galleries
+  const cardsToInit = Array.from(galleryInitQueue);
+  galleryInitQueue.clear();
+  
+  cardsToInit.forEach(cardId => {
+    initializeGallery(cardId);
+  });
+}
+
+// Defer gallery initialization
+function queueGalleryInit(cardId) {
+  galleryInitQueue.add(cardId);
+  
+  // Clear existing timer
+  if (galleryInitTimer) {
+    clearTimeout(galleryInitTimer);
+  }
+  
+  // Process queue after a short delay to batch initializations
+  galleryInitTimer = setTimeout(() => {
+    processGalleryQueue();
+  }, 100);
+}
+
+// Initialize a single gallery
+function initializeGallery(cardId) {
+  const root = document.getElementById('card-' + cardId);
+  if (!root) return;
+  
+  const repsSection = root.querySelector('#reps-' + cardId);
+  if (!repsSection || repsSection._galleryInitialized) return;
+  
+  const mediaViewport = repsSection.querySelector('.media-viewport');
+  const mediaContainer = repsSection.querySelector('.media-container');
+  const prevBtn = repsSection.querySelector('.gallery-prev');
+  const nextBtn = repsSection.querySelector('.gallery-next');
+  const indicatorsContainer = repsSection.querySelector('.gallery-indicators');
+  
+  if (!mediaContainer || !mediaViewport) return;
+  
+  let currentPosition = 0;
+  
+  // Calculate scroll limits
+  function getScrollInfo() {
+    const containerWidth = mediaContainer.scrollWidth;
+    const viewportWidth = mediaViewport.offsetWidth;
+    const maxScroll = Math.max(0, containerWidth - viewportWidth);
+    const scrollStep = viewportWidth * 0.8; // Scroll 80% of viewport
+    const totalSteps = Math.ceil(maxScroll / scrollStep);
+    return { containerWidth, viewportWidth, maxScroll, scrollStep, totalSteps };
+  }
+  
+  // Update scroll position
+  function scrollToPosition(position) {
+    const { maxScroll, scrollStep } = getScrollInfo();
+    const targetScroll = Math.min(position * scrollStep, maxScroll);
+    
+    mediaContainer.style.transition = 'transform 0.3s ease';
+    mediaContainer.style.transform = `translateX(${-targetScroll}px)`;
+    
+    currentPosition = position;
+    updateIndicators();
+  }
+  
+  // Update indicators
+  function updateIndicators() {
+    if (!indicatorsContainer) return;
+    
+    const indicators = indicatorsContainer.querySelectorAll('.indicator');
+    indicators.forEach((ind, i) => {
+      ind.classList.toggle('active', i === currentPosition);
+    });
+  }
+  
+  // Create indicators
+  function createIndicators() {
+    if (!indicatorsContainer) return;
+    
+    const { containerWidth, viewportWidth, totalSteps } = getScrollInfo();
+    
+    if (containerWidth <= viewportWidth) {
+      // Content fits, hide navigation
+      indicatorsContainer.innerHTML = '';
+      if (prevBtn) prevBtn.style.display = 'none';
+      if (nextBtn) nextBtn.style.display = 'none';
+      return;
+    }
+    
+    // Show navigation
+    if (prevBtn) prevBtn.style.display = '';
+    if (nextBtn) nextBtn.style.display = '';
+    
+    // Create indicators for each step
+    indicatorsContainer.innerHTML = '';
+    for (let i = 0; i <= totalSteps; i++) {
+      const indicator = document.createElement('span');
+      indicator.className = 'indicator' + (i === 0 ? ' active' : '');
+      indicator.dataset.position = i;
+      indicator.addEventListener('click', function(e) {
+        e.stopPropagation();
+        scrollToPosition(parseInt(this.dataset.position));
+      });
+      indicatorsContainer.appendChild(indicator);
+    }
+  }
+  
+  // Navigation button handlers
+  if (prevBtn && !prevBtn._galleryBound) {
+    prevBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const { totalSteps } = getScrollInfo();
+      
+      if (currentPosition > 0) {
+        scrollToPosition(currentPosition - 1);
+      } else {
+        scrollToPosition(totalSteps);
+      }
+    });
+    prevBtn._galleryBound = true;
+  }
+  
+  if (nextBtn && !nextBtn._galleryBound) {
+    nextBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const { totalSteps } = getScrollInfo();
+      
+      if (currentPosition < totalSteps) {
+        scrollToPosition(currentPosition + 1);
+      } else {
+        scrollToPosition(0);
+      }
+    });
+    nextBtn._galleryBound = true;
+  }
+  
+  // Setup gallery immediately
+  createIndicators();
+  scrollToPosition(0);
+  
+  // Mark as initialized
+  repsSection._galleryInitialized = true;
+  
+  // Handle window resize
+  if (!window._galleryResizeHandler) {
+    window._galleryResizeHandler = true;
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        // Re-initialize all visible galleries on resize
+        document.querySelectorAll('.representations-section').forEach(section => {
+          if (section._galleryInitialized) {
+            const cardId = parseInt(section.dataset.cardId);
+            if (cardId) {
+              initializeGallery(cardId);
+            }
+          }
+        });
+      }, 250);
+    });
+  }
+}
+
 // ---------- Card Selection ----------
 export function selectCard(e) { 
   e.stopPropagation(); 
@@ -992,166 +1163,12 @@ export function hydrateCard(cardId) {
       }
     });
     
-    // Gallery navigation
-    const prevBtn = repsSection.querySelector('.gallery-prev');
-    const nextBtn = repsSection.querySelector('.gallery-next');
-    const mediaViewport = repsSection.querySelector('.media-viewport');
-    const mediaContainer = repsSection.querySelector('.media-container');
-    const indicatorsContainer = repsSection.querySelector('.gallery-indicators');
-    
-    if (mediaContainer && mediaViewport) {
-      const mediaItems = mediaContainer.querySelectorAll('.media-item');
-      const totalItems = mediaItems.length;
-      
-      let currentPosition = 0;
-      
-      // Calculate scroll limits
-      function getScrollInfo() {
-        const containerWidth = mediaContainer.scrollWidth;
-        const viewportWidth = mediaViewport.offsetWidth;
-        const maxScroll = Math.max(0, containerWidth - viewportWidth);
-        const scrollStep = viewportWidth * 0.8; // Scroll 80% of viewport
-        const totalSteps = Math.ceil(maxScroll / scrollStep);
-        return { containerWidth, viewportWidth, maxScroll, scrollStep, totalSteps };
-      }
-      
-      // Update scroll position
-      function scrollToPosition(position) {
-        const { maxScroll, scrollStep } = getScrollInfo();
-        const targetScroll = Math.min(position * scrollStep, maxScroll);
-        
-        // Apply transform with transition
-        mediaContainer.style.transition = 'transform 0.3s ease';
-        mediaContainer.style.transform = `translateX(${-targetScroll}px)`;
-        
-        currentPosition = position;
-        updateIndicators();
-      }
-      
-      // Update indicators
-      function updateIndicators() {
-        if (!indicatorsContainer) return;
-        
-        const indicators = indicatorsContainer.querySelectorAll('.indicator');
-        indicators.forEach((ind, i) => {
-          ind.classList.toggle('active', i === currentPosition);
-        });
-      }
-      
-      // Create indicators
-      function createIndicators() {
-        if (!indicatorsContainer) return;
-        
-        const { containerWidth, viewportWidth, totalSteps } = getScrollInfo();
-        
-        if (containerWidth <= viewportWidth) {
-          // Content fits, hide navigation
-          indicatorsContainer.innerHTML = '';
-          if (prevBtn) prevBtn.style.display = 'none';
-          if (nextBtn) nextBtn.style.display = 'none';
-          return;
-        }
-        
-        // Show navigation
-        if (prevBtn) prevBtn.style.display = '';
-        if (nextBtn) nextBtn.style.display = '';
-        
-        // Create indicators for each step
-        indicatorsContainer.innerHTML = '';
-        for (let i = 0; i <= totalSteps; i++) {
-          const indicator = document.createElement('span');
-          indicator.className = 'indicator' + (i === 0 ? ' active' : '');
-          indicator.dataset.position = i;
-          indicator.addEventListener('click', function(e) {
-            e.stopPropagation();
-            scrollToPosition(parseInt(this.dataset.position));
-          });
-          indicatorsContainer.appendChild(indicator);
-        }
-      }
-      
-      // Navigation buttons
-      if (prevBtn) {
-        prevBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          const { totalSteps } = getScrollInfo();
-          
-          if (currentPosition > 0) {
-            scrollToPosition(currentPosition - 1);
-          } else {
-            // Wrap to end
-            scrollToPosition(totalSteps);
-          }
-        });
-      }
-      
-      if (nextBtn) {
-        nextBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          const { totalSteps } = getScrollInfo();
-          
-          if (currentPosition < totalSteps) {
-            scrollToPosition(currentPosition + 1);
-          } else {
-            // Wrap to beginning
-            scrollToPosition(0);
-          }
-        });
-      }
-      
-      // Initialize gallery
-      function initializeGallery() {
-        // Wait for images to load
-        let loadedCount = 0;
-        const images = mediaContainer.querySelectorAll('img');
-        
-        function setupGallery() {
-          createIndicators();
-          scrollToPosition(0);
-        }
-        
-        if (images.length === 0) {
-          setupGallery();
-        } else {
-          images.forEach(img => {
-            if (img.complete) {
-              loadedCount++;
-              if (loadedCount === images.length) {
-                setupGallery();
-              }
-            } else {
-              img.addEventListener('load', () => {
-                loadedCount++;
-                if (loadedCount === images.length) {
-                  setupGallery();
-                }
-              });
-            }
-          });
-          
-          // Fallback after timeout
-          setTimeout(setupGallery, 500);
-        }
-      }
-      
-      initializeGallery();
-      
-      // Handle window resize
-      let resizeTimer;
-      window.addEventListener('resize', () => {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-          createIndicators();
-          // Adjust position if needed
-          const { totalSteps } = getScrollInfo();
-          if (currentPosition > totalSteps) {
-            scrollToPosition(totalSteps);
-          }
-        }, 250);
-      });
-    }
-    
     repsSection._eventsBound = true;
+  }
+  
+  // Queue gallery initialization to be done asynchronously
+  if (repsSection && !repsSection._galleryInitialized) {
+    queueGalleryInit(cardId);
   }
   
   // Type pill handlers for breaking inheritance
