@@ -670,6 +670,97 @@ export function hydrateCard(cardId) {
   }
   
   // Attributes handling with custom dropdown
+  const attrList = root.querySelector('#attrs-' + cardId);
+  
+  // Add focus/blur handling for the entire attribute section with better state management
+  if (attrList && !attrList._focusHandlerBound) {
+    // Function to check if all non-empty rows have keys
+    const checkCanAddRow = () => {
+      const rows = attrList.querySelectorAll('.attr-row:not(.empty-row):not(.inherited)');
+      const allHaveKeys = Array.from(rows).every(row => {
+        const keyInput = row.querySelector('.attr-key');
+        return keyInput && keyInput.value.trim() !== '';
+      });
+      
+      if (allHaveKeys) {
+        attrList.classList.add('can-add-row');
+      } else {
+        attrList.classList.remove('can-add-row');
+      }
+      return allHaveKeys;
+    };
+    
+    // Function to update focus state
+    const updateAttrFocusState = () => {
+      const activeEl = document.activeElement;
+      const isAttrFocused = attrList.contains(activeEl) && 
+                           (activeEl.classList.contains('attr-key') || 
+                            activeEl.classList.contains('attr-val'));
+      
+      if (isAttrFocused) {
+        attrList.classList.add('focused');
+        checkCanAddRow(); // Check if we should show empty row
+      } else {
+        attrList.classList.remove('focused');
+      }
+    };
+    
+    // Initial check
+    checkCanAddRow();
+    
+    // Track focus entering attributes
+    attrList.addEventListener('focusin', function(e) {
+      if (e.target.matches('.attr-key, .attr-val')) {
+        this.classList.add('focused');
+        checkCanAddRow();
+      }
+    });
+    
+    // Track focus leaving attributes
+    attrList.addEventListener('focusout', function(e) {
+      // Small delay to let focus settle
+      setTimeout(() => {
+        updateAttrFocusState();
+      }, 10);
+    });
+    
+    // Monitor key input changes to update can-add-row state
+    attrList.addEventListener('input', function(e) {
+      if (e.target.classList.contains('attr-key')) {
+        checkCanAddRow();
+      }
+    });
+    
+    // Click handler for the card itself to handle clicks on other sections
+    root.addEventListener('mousedown', function(e) {
+      // If clicking outside attributes section but within the card
+      if (!attrList.contains(e.target)) {
+        // Remove focus from attributes
+        attrList.classList.remove('focused');
+        
+        // Also blur any active attribute input
+        const activeAttrInput = attrList.querySelector('.attr-key:focus, .attr-val:focus');
+        if (activeAttrInput) {
+          activeAttrInput.blur();
+        }
+      }
+    }, true); // Use capture phase to handle before other handlers
+    
+    // Global click handler for clicks outside the card
+    const globalClickHandler = function(e) {
+      // If click is outside this card entirely, remove focus
+      if (!root.contains(e.target)) {
+        attrList.classList.remove('focused');
+      }
+    };
+    
+    // Add global click listener (removed when card is destroyed)
+    document.addEventListener('click', globalClickHandler);
+    attrList._globalClickHandler = globalClickHandler;
+    
+    attrList._focusHandlerBound = true;
+  }
+  
   root.querySelectorAll('#attrs-' + cardId + ' .attr-row').forEach((row, rowIndex) => {
     const inh = row.dataset.inh === '1'; 
     const k = row.querySelector('.attr-key'); 
@@ -1245,7 +1336,7 @@ export function hydrateCard(cardId) {
       
       const remainingLinks = linksContainer.querySelectorAll('.link-item');
       if (remainingLinks.length === 0) {
-        linksContainer.innerHTML = '<div class="no-links" style="opacity:.6;font-size:11px">No linked entities<br><span style="opacity:.5;font-size:10px">Drag to bottom of another card to create link</span></div>';
+        linksContainer.innerHTML = '<div class="no-links">No linked entities<br><span style="opacity:.5;font-size:10px">Drag to bottom of another card to create link</span></div>';
       }
     });
     

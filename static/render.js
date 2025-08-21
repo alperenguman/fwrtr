@@ -264,10 +264,12 @@ export function renderAttrRows(card) {
     </div>`;
   });
   
-  // Add empty row for new entries (ALWAYS show this for adding own attributes)
+  // Add empty row for new entries (hidden by default, shown when focused AND all keys filled)
   const emptyIdx = owned.length;
   console.log(`[renderAttrRows] Adding empty row at index ${emptyIdx}`);
-  html += `<div class="attr-row" data-idx="${emptyIdx}">
+  
+  // Empty row always gets the empty-row class, visibility controlled by CSS and JS
+  html += `<div class="attr-row empty-row" data-idx="${emptyIdx}" data-empty="true">
     <input class="attr-key" value="" placeholder="key">
     <div class="attr-dropdown-wrapper">
       <input class="attr-val" value="" placeholder="value" autocomplete="off">
@@ -281,7 +283,7 @@ export function renderAttrRows(card) {
 
 export function renderLinks(cardId) { 
   const set = data.links.get(cardId) || new Set(); 
-  if (!set.size) return '<div class="no-links" style="opacity:.6;font-size:11px">No linked entities<br><span style="opacity:.5;font-size:10px">Drag to bottom of another card to create link</span></div>'; 
+  if (!set.size) return '<div class="no-links">No linked entities<br><span style="opacity:.5;font-size:10px">Drag to bottom of another card to create link</span></div>'; 
   return Array.from(set).map(id => `<div class="link-item" data-id="${id}" title="This card links to ${esc(data.byId(id)?.name || '')}">${esc(data.byId(id)?.name || '')}</div>`).join(''); 
 }
 
