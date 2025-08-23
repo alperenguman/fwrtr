@@ -284,7 +284,11 @@ export function renderAttrRows(card) {
 export function renderLinks(cardId) { 
   const set = data.links.get(cardId) || new Set(); 
   if (!set.size) return '<div class="no-links">No linked entities<br><span style="opacity:.5;font-size:10px">Drag to bottom of another card to create link</span></div>'; 
-  return Array.from(set).map(id => `<div class="link-item" data-id="${id}" title="This card links to ${esc(data.byId(id)?.name || '')}">${esc(data.byId(id)?.name || '')}</div>`).join(''); 
+  return Array.from(set).sort((a, b) => a - b).map((id, index) => {
+    const row = Math.floor(index / 2) + 1;
+    const col = (index % 2) + 1;
+    return `<div class="link-item" data-id="${id}" style="grid-row: ${row}; grid-column: ${col};" title="This card links to ${esc(data.byId(id)?.name || '')}">${esc(data.byId(id)?.name || '')}</div>`;
+  }).join(''); 
 }
 
 // ---------- UI Updates ----------
@@ -385,9 +389,39 @@ export function toggleSection(kind, id) {
   const body = document.getElementById(`${kind}-${id}`); 
   if (!caret || !body) return; 
   
+  // Debug: Log current state
+  if (kind === 'links') {
+    console.log(`[DEBUG] Before toggle - Links section for card ${id}:`);
+    const linkItems = body.querySelectorAll('.link-item');
+    linkItems.forEach((item, idx) => {
+      const rect = item.getBoundingClientRect();
+      const styles = getComputedStyle(item);
+      console.log(`  Item ${idx}: ${item.textContent} - pos(${rect.left},${rect.top}) grid-row:${styles.gridRow} grid-column:${styles.gridColumn}`);
+    });
+  }
+  
   const open = getComputedStyle(body).display !== 'none'; 
-  body.style.display = open ? 'none' : 'block'; 
-  caret.classList.toggle('down', !open); 
+  body.style.display = open ? 'none' : (kind === 'links' ? 'grid' : 'block'); 
+  caret.classList.toggle('down', !open);
+  
+  // Debug: Log state after toggle and force grid recalculation
+  if (kind === 'links' && !open) {
+    // Force grid recalculation by briefly changing display property
+    setTimeout(() => {
+      const currentDisplay = body.style.display;
+      body.style.display = 'grid';
+      body.offsetHeight; // Force reflow
+      body.style.display = currentDisplay;
+      
+      console.log(`[DEBUG] After expand - Links section for card ${id}:`);
+      const linkItems = body.querySelectorAll('.link-item');
+      linkItems.forEach((item, idx) => {
+        const rect = item.getBoundingClientRect();
+        const styles = getComputedStyle(item);
+        console.log(`  Item ${idx}: ${item.textContent} - pos(${rect.left},${rect.top}) grid-row:${styles.gridRow} grid-column:${styles.gridColumn}`);
+      });
+    }, 10);
+  } 
   
   // If opening attributes and it's empty, ensure empty row exists
   if (!open && kind === 'attrs') {
