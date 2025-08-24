@@ -99,8 +99,13 @@ export function renderCard(v) {
 
       <div class="section-header" onclick="toggleSection('attrs',${c.id})">
         <span class="caret down" id="caret-attrs-${c.id}">▶</span> Attributes
+        <span class="attr-page-indicator" id="attr-page-${c.id}"></span>
       </div>
-      <div class="attr-list" id="attrs-${c.id}">${renderAttrRows(c)}</div>
+      <div class="attr-pagination-container" id="attr-container-${c.id}">
+        <div class="attr-chevron left" id="attr-prev-${c.id}">‹</div>
+        <div class="attr-list" id="attrs-${c.id}">${renderAttrRows(c)}</div>
+        <div class="attr-chevron right" id="attr-next-${c.id}">›</div>
+      </div>
 
       <div class="card-text" id="txt-${c.id}">${linkify(esc(c.content || ''), c.id)}</div>
 
@@ -112,6 +117,13 @@ export function renderCard(v) {
   
   const plane = document.getElementById('plane');
   plane.appendChild(el);
+  
+  // Initialize attributes pagination
+  setTimeout(() => {
+    if (window.AttrPagination) {
+      window.AttrPagination.init(c.id);
+    }
+  }, 10);
 }
 
 // Render representations gallery
@@ -353,10 +365,16 @@ export function updateCardUI(cardId, focusNew = false) {
   el.querySelector('#links-' + cardId).innerHTML = renderLinks(cardId); 
   el.querySelector('#txt-' + cardId).innerHTML = linkify(esc(c.content || ''), cardId); 
   
+  
   // Re-hydrate the card
   console.log(`[updateCardUI] Re-hydrating card ${cardId}`);
   if (typeof window.hydrateCard === 'function') {
     window.hydrateCard(cardId);
+  }
+  
+  // Update pagination after hydration to avoid interfering with input focus
+  if (typeof window.AttrPagination === 'object' && window.AttrPagination.update) {
+    window.AttrPagination.update(cardId);
   }
   
   if (focusNew) { 

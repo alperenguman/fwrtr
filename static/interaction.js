@@ -1350,6 +1350,11 @@ export function hydrateCard(cardId) {
     it._eventsBound = true;
   });
   
+  // Bind pagination events if not already bound
+  if (!wasHydrated && typeof window.AttrPagination === 'object' && window.AttrPagination.bindEvents) {
+    window.AttrPagination.bindEvents(cardId);
+  }
+  
   // Mark card as fully hydrated
   root._fullyHydrated = true;
 }
