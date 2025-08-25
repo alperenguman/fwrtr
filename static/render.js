@@ -97,14 +97,16 @@ export function renderCard(v) {
       </div>
       <div class="representations-section" id="reps-${c.id}" data-card-id="${c.id}">${renderRepresentations(c)}</div>
 
-      <div class="section-header" onclick="toggleSection('attrs',${c.id})">
-        <span class="caret down" id="caret-attrs-${c.id}">▶</span> Attributes
+      <div class="section-header">
+        <div class="section-title" onclick="toggleSection('attrs',${c.id})">
+          <span class="caret down" id="caret-attrs-${c.id}">▶</span> Attributes
+        </div>
+        <div class="attr-chevron left" id="attr-prev-${c.id}">◀</div>
         <span class="attr-page-indicator" id="attr-page-${c.id}"></span>
+        <div class="attr-chevron right" id="attr-next-${c.id}">▶</div>
       </div>
       <div class="attr-pagination-container" id="attr-container-${c.id}">
-        <div class="attr-chevron left" id="attr-prev-${c.id}">‹</div>
         <div class="attr-list" id="attrs-${c.id}">${renderAttrRows(c)}</div>
-        <div class="attr-chevron right" id="attr-next-${c.id}">›</div>
       </div>
 
       <div class="card-text" id="txt-${c.id}">${linkify(esc(c.content || ''), c.id)}</div>
@@ -358,6 +360,13 @@ export function updateCardUI(cardId, focusNew = false) {
   if (oldAttrsHTML !== newAttrsHTML) {
     console.log(`[updateCardUI] Attributes HTML changed, updating DOM`);
     el.querySelector('#attrs-' + cardId).innerHTML = newAttrsHTML;
+    
+    // Only update pagination when attributes actually change
+    setTimeout(() => {
+      if (typeof window.AttrPagination === 'object' && window.AttrPagination.update) {
+        window.AttrPagination.update(cardId);
+      }
+    }, 0);
   } else {
     console.log(`[updateCardUI] Attributes HTML unchanged, skipping DOM update`);
   }
@@ -372,10 +381,6 @@ export function updateCardUI(cardId, focusNew = false) {
     window.hydrateCard(cardId);
   }
   
-  // Update pagination after hydration to avoid interfering with input focus
-  if (typeof window.AttrPagination === 'object' && window.AttrPagination.update) {
-    window.AttrPagination.update(cardId);
-  }
   
   if (focusNew) { 
     console.log(`[updateCardUI] Focusing new row`);

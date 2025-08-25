@@ -777,6 +777,23 @@ export function hydrateCard(cardId) {
     
     console.log(`[hydrateCard] Binding events for card ${cardId}, row ${rowIndex}, inherited: ${inh}, ID: ${rowId}`);
     
+    // Add debug logging for input interactions
+    k.addEventListener('focus', () => {
+      console.log(`[INPUT_DEBUG] Key input focused - Card ${cardId}, Row ${rowIndex}, ID: ${rowId}`);
+    });
+    
+    k.addEventListener('blur', () => {
+      console.log(`[INPUT_DEBUG] Key input blurred - Card ${cardId}, Row ${rowIndex}, ID: ${rowId}`);
+    });
+    
+    v.addEventListener('focus', () => {
+      console.log(`[INPUT_DEBUG] Value input focused - Card ${cardId}, Row ${rowIndex}, ID: ${rowId}`);
+    });
+    
+    v.addEventListener('blur', () => {
+      console.log(`[INPUT_DEBUG] Value input blurred - Card ${cardId}, Row ${rowIndex}, ID: ${rowId}`);
+    });
+    
     // Mark with unique ID to prevent re-binding
     k._boundId = rowId;
     v._boundId = rowId;

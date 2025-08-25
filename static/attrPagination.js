@@ -8,6 +8,7 @@ window.AttrPagination = {
   },
   
   update(cardId) {
+    console.log(`[PAGINATION_DEBUG] Starting pagination update for card ${cardId}`);
     const attrList = document.getElementById(`attrs-${cardId}`);
     const container = document.getElementById(`attr-container-${cardId}`);
     const indicator = document.getElementById(`attr-page-${cardId}`);
@@ -98,8 +99,8 @@ window.AttrPagination = {
       indicator.textContent = `(${validPage + 1}/${totalPages})`;
       indicator.classList.add('visible');
       
-      prevBtn.classList.toggle('visible', validPage > 0);
-      nextBtn.classList.toggle('visible', validPage < totalPages - 1);
+      prevBtn.classList.add('visible');
+      nextBtn.classList.add('visible');
     } else {
       indicator.classList.remove('visible');
       prevBtn.classList.remove('visible');
@@ -135,7 +136,14 @@ window.AttrPagination = {
   
   goToPage(cardId, direction) {
     const currentState = this.state.get(cardId) || { page: 0, totalPages: 1 };
-    const newPage = Math.max(0, Math.min(currentState.totalPages - 1, currentState.page + direction));
+    let newPage = currentState.page + direction;
+    
+    // Cycle pages: if going before first page, go to last; if going after last page, go to first
+    if (newPage < 0) {
+      newPage = currentState.totalPages - 1;
+    } else if (newPage >= currentState.totalPages) {
+      newPage = 0;
+    }
     
     if (newPage !== currentState.page) {
       this.state.set(cardId, { ...currentState, page: newPage });
