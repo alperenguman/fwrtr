@@ -126,6 +126,13 @@ export function renderCard(v) {
       window.AttrPagination.init(c.id);
     }
   }, 10);
+  
+  // Initialize text scrolling
+  setTimeout(() => {
+    if (window.TextScroll) {
+      window.TextScroll.init(c.id);
+    }
+  }, 15);
 }
 
 // Render representations gallery
