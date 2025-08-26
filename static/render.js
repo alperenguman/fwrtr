@@ -461,6 +461,7 @@ export function toggleSection(kind, id) {
       // If no attributes at all (not even inherited), ensure we have an empty one
       if (attrs.length === 0 && (!card.attributes || card.attributes.length === 0)) {
         card.attributes = [{key: '', value: '', kind: 'text'}];
+        if (window.persistence) window.persistence.markDirty();
         updateCardUI(id);
       }
     }

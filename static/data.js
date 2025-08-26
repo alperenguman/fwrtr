@@ -37,6 +37,7 @@ export function link(a, b) {
   // Removed bidirectional linking - only a links to b now
   console.log(`[link] After linking - Card ${a} links:`, Array.from(links.get(a) || new Set()));
   console.log(`[link] Card ${b} is not updated (one-way link)`);
+  notifyChange();
 }
 
 export function unlink(a, b) { 
@@ -46,6 +47,7 @@ export function unlink(a, b) {
   links.get(a)?.delete(b); 
   
   console.log(`  After - Card ${a} links:`, Array.from(links.get(a) || new Set()));
+  notifyChange();
 }
 
 export function contain(parent, child) { 
@@ -58,6 +60,7 @@ export function contain(parent, child) {
   ensure(parentsOf, child).add(parent); 
   
   // Note: Caller must handle re-rendering
+  notifyChange();
   return true;
 }
 
@@ -76,6 +79,7 @@ export function createCard(x, y) {
   }; 
   
   all.push(c); 
+  notifyChange();
   return c; 
 }
 
@@ -89,11 +93,15 @@ export function addRepresentation(cardId, mediaUrl) {
   }
   
   // Avoid duplicates
+  console.log(`[addRepresentation] Checking for duplicate: ${mediaUrl.substring(0, 50)}...`);
+  console.log(`[addRepresentation] Current representations:`, card.representations.length);
   if (!card.representations.includes(mediaUrl)) {
     card.representations.push(mediaUrl);
-    console.log(`[addRepresentation] Added media to card ${cardId}: ${mediaUrl}`);
+    console.log(`[addRepresentation] Added media to card ${cardId}, total representations: ${card.representations.length}`);
+    notifyChange();
     return true;
   }
+  console.log(`[addRepresentation] Duplicate media URL rejected for card ${cardId}`);
   return false;
 }
 
@@ -103,8 +111,9 @@ export function removeRepresentation(cardId, index) {
   if (!card || !card.representations) return false;
   
   if (index >= 0 && index < card.representations.length) {
-    const removed = card.representations.splice(index, 1);
-    console.log(`[removeRepresentation] Removed media from card ${cardId}: ${removed[0]}`);
+    card.representations.splice(index, 1);
+    console.log(`[removeRepresentation] Removed media from card ${cardId}`);
+    notifyChange();
     return true;
   }
   return false;
@@ -124,6 +133,7 @@ export function deleteCard(id) {
   // Remove from data array
   all = all.filter(c => c.id !== id); 
   
+  notifyChange();
   // Note: Caller must handle DOM cleanup and re-rendering
   return true;
 }
@@ -192,6 +202,7 @@ export function removeParent(childId, parentId) {
   }
   
   console.log(`[removeParent] Removed inheritance: ${parentId} -> ${childId}`);
+  notifyChange();
 }
 export function linearParents(id) { 
   console.log(`[linearParents] Getting parent chain for card ${id}`);

@@ -55,7 +55,6 @@ window.focusOn = viewport.focusOn;
 window.hydrateCard = interaction.hydrateCard;
 
 // Expose persistence functions
-window.syncNow = () => persistence.syncToBackend();
 window.exportData = () => persistence.exportData();
 window.importData = () => {
   const input = document.createElement('input');
@@ -70,12 +69,12 @@ window.importData = () => {
 window.clearData = () => persistence.clearLocalData();
 
 // ---------- Application Initialization ----------
-function initializeApp() {
+async function initializeApp() {
   // Initialize persistence first
   persistence.init();
   
-  // Try to load saved state
-  const hasLocalData = persistence.loadFromLocal();
+  // Try to load saved state (now async)
+  const hasLocalData = await persistence.loadFromLocal();
   
   // Initialize viewport
   viewport.init();
@@ -91,11 +90,21 @@ function initializeApp() {
     persistence.saveToLocal();
   } else {
     // We loaded saved data
-    console.log('Loaded saved state from local storage');
+    console.log('Loaded saved state from IndexedDB');
+    
+    // Restore viewport clones from saved layout
+    const currentLayout = viewport.ensureLayout(viewport.currentPlane);
+    if (currentLayout.cards && currentLayout.cards.length > 0) {
+      viewport.setClones(currentLayout.cards);
+    }
   }
   
-  // Render initial plane
-  render.renderPlane(null);
+  // Apply saved viewport state
+  viewport.updateView();
+  viewport.updateHUD();
+  
+  // Render initial plane (use currentPlane instead of hardcoded null)
+  render.renderPlane(viewport.currentPlane);
   
   // Initialize interactions
   interaction.init();

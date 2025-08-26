@@ -9,7 +9,7 @@ export let currentPlane = null; // null = root
 export let clones = []; // [{refId,x,y}] - visible card positions
 
 // ---------- Layout Management ----------
-const layouts = new Map(); // key('ROOT' or id) -> {viewX,viewY,cards:[]}
+export const layouts = new Map(); // key('ROOT' or id) -> {viewX,viewY,cards:[]}
 const keyOf = pid => pid == null ? 'ROOT' : String(pid);
 
 export function ensureLayout(pid) { 
@@ -17,7 +17,12 @@ export function ensureLayout(pid) {
   if (!layouts.has(k)) {
     layouts.set(k, {viewX: 0, viewY: 0, cards: []}); 
   }
-  return layouts.get(k); 
+  const layout = layouts.get(k);
+  // Ensure cards array exists (for backwards compatibility with saved data)
+  if (!layout.cards) {
+    layout.cards = [];
+  }
+  return layout; 
 }
 
 // ---------- DOM Elements ----------
@@ -67,6 +72,11 @@ export function showBG() {
 // ---------- Setters for mutable state ----------
 export function setCurrentPlane(pid) {
   currentPlane = pid;
+  
+  // Trigger persistence when current plane changes
+  if (window.persistence && window.persistence.markDirty) {
+    window.persistence.markDirty();
+  }
 }
 
 export function setClones(newClones) {
@@ -77,10 +87,20 @@ export function setViewport(x, y, z) {
   if (x !== undefined) viewX = x;
   if (y !== undefined) viewY = y;
   if (z !== undefined) zoom = z;
+  
+  // Trigger persistence when viewport changes
+  if (window.persistence && window.persistence.markDirty) {
+    window.persistence.markDirty();
+  }
 }
 
 export function setDepth(d) {
   depth = d;
+}
+
+export function setStack(newStack) {
+  stack.length = 0; // Clear existing
+  stack.push(...newStack); // Restore saved stack
 }
 
 export function modifyClone(index, x, y) {
@@ -95,6 +115,19 @@ export function setClonePosition(cardId, x, y) {
   if (ix >= 0) {
     clones[ix].x = x;
     clones[ix].y = y;
+    
+    // Also update the layout for persistence
+    const layout = ensureLayout(currentPlane);
+    const layoutIx = layout.cards.findIndex(v => v.refId === cardId);
+    if (layoutIx >= 0) {
+      layout.cards[layoutIx].x = x;
+      layout.cards[layoutIx].y = y;
+      
+      // Trigger persistence
+      if (window.persistence && window.persistence.markDirty) {
+        window.persistence.markDirty();
+      }
+    }
   }
 }
 
@@ -114,6 +147,11 @@ export function enter(id) {
   setDepth(depth + 1); 
   setCurrentPlane(id);
   
+  // Trigger persistence for navigation changes
+  if (window.persistence && window.persistence.markDirty) {
+    window.persistence.markDirty();
+  }
+  
   // Note: Caller must trigger renderPlane
   return true;
 }
@@ -124,6 +162,11 @@ export function exit() {
   const prev = stack.pop(); 
   setDepth(depth - 1); 
   setCurrentPlane(prev.planeId ?? null);
+  
+  // Trigger persistence for navigation changes
+  if (window.persistence && window.persistence.markDirty) {
+    window.persistence.markDirty();
+  }
   
   // Note: Caller must trigger renderPlane and focusOn
   return prev;

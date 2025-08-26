@@ -1233,6 +1233,8 @@ export function hydrateCard(cardId) {
               const mediaUrl = event.target.result;
               if (data.addRepresentation(cardId, mediaUrl)) {
                 render.updateCardUI(cardId);
+                // Re-hydrate the card to bind new event handlers
+                hydrateCard(cardId);
               }
             };
             reader.readAsDataURL(file);
@@ -1248,6 +1250,8 @@ export function hydrateCard(cardId) {
             mediaUrl.startsWith('data:')) {
           if (data.addRepresentation(cardId, mediaUrl)) {
             render.updateCardUI(cardId);
+            // Re-hydrate the card to bind new event handlers
+            hydrateCard(cardId);
           }
         }
       }
