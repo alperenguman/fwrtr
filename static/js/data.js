@@ -64,6 +64,97 @@ export function contain(parent, child) {
   return true;
 }
 
+// ---------- Variant Naming System ----------
+function generateVariantName(baseName) {
+  // Get all existing cards with names starting with baseName - var
+  const variantPrefix = `${baseName} - var `;
+  const existingVariants = all.filter(card => {
+    return card.name.startsWith(variantPrefix) && /^[A-Z]+$/.test(card.name.substring(variantPrefix.length));
+  });
+  
+  // Extract existing suffixes
+  const existingSuffixes = existingVariants.map(card => {
+    return card.name.substring(variantPrefix.length);
+  });
+  
+  // Generate next variant name using A, B, ..., Z, AA, AB, etc.
+  const generateSuffix = (index) => {
+    let suffix = '';
+    let temp = index;
+    do {
+      suffix = String.fromCharCode(65 + (temp % 26)) + suffix;
+      temp = Math.floor(temp / 26) - 1;
+    } while (temp >= 0);
+    return suffix;
+  };
+  
+  // Find the next available suffix
+  let index = 0;
+  let suffix = generateSuffix(index);
+  while (existingSuffixes.includes(suffix)) {
+    index++;
+    suffix = generateSuffix(index);
+  }
+  
+  return `${baseName} - var ${suffix}`;
+}
+
+export function createVariant(originalId, x, y) {
+  const original = byId(originalId);
+  if (!original) return null;
+  
+  // Generate variant name
+  const variantName = generateVariantName(original.name);
+  
+  // Create new card with variant name
+  const variant = {
+    id: nextId++,
+    name: variantName,
+    type: original.type,
+    content: original.content,
+    attributes: original.attributes.map(attr => ({
+      key: attr.key,
+      value: attr.value,  // Copy both key AND value
+      kind: attr.kind,
+      entityId: attr.entityId,
+      entityIds: attr.entityIds ? [...attr.entityIds] : undefined
+    })), // Deep copy attributes with values
+    representations: [...original.representations] // Copy representations
+  };
+  
+  all.push(variant);
+  
+  // Set up sibling relationship - variant inherits from the same parent as original
+  const originalParents = parentsOf.get(originalId);
+  if (originalParents && originalParents.size > 0) {
+    // Make variant inherit from all the same parents as the original (sibling relationship)
+    originalParents.forEach(parentId => {
+      contain(parentId, variant.id);
+    });
+  }
+  // If original has no parents, variant also has no parents (both are root-level)
+  
+  // Copy linked entities - variants should have the same links as the original
+  const originalLinks = links.get(originalId);
+  if (originalLinks && originalLinks.size > 0) {
+    const variantLinks = new Set(originalLinks);
+    links.set(variant.id, variantLinks);
+    
+    // Also add the variant to the linked entities' back-references
+    originalLinks.forEach(linkedId => {
+      const backLinks = links.get(linkedId);
+      if (backLinks) {
+        backLinks.add(variant.id);
+      } else {
+        links.set(linkedId, new Set([variant.id]));
+      }
+    });
+  }
+  
+  notifyChange();
+  return variant;
+}
+
 // ---------- CRUD Operations ----------
 export function createCard(x, y) { 
   if (x == null) x = (innerWidth/2) / 1 - 160;  // Will be adjusted by viewport

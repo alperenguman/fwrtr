@@ -15,6 +15,44 @@ let hover = null;
 const LINK_ZONE_HEIGHT = 60; // Increased from 40 for better usability
 const LINK_ZONE_VISUAL_FEEDBACK = true;
 
+// ---------- Variant Drag State ----------
+let variantDragging = false;
+let variantGhost = null;
+let variantOriginalId = null;
+let variantData = null;
+
+// Create ghost element for variant dragging
+function createVariantGhost(originalCard, clientX, clientY) {
+  // Remove existing ghost
+  if (variantGhost) {
+    variantGhost.remove();
+  }
+  
+  // Clone the original card element
+  variantGhost = originalCard.cloneNode(true);
+  variantGhost.id = 'variant-ghost';
+  variantGhost.className = 'card variant-ghost';
+  variantGhost.style.cssText = `
+    position: fixed;
+    left: ${clientX - 170}px;
+    top: ${clientY - 110}px;
+    z-index: 10000;
+    opacity: 0.8;
+    pointer-events: none;
+    transform: scale(0.9);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    border: 2px dashed #007acc;
+  `;
+  
+  // Update the ghost's title to show variant name
+  const titleEl = variantGhost.querySelector('.card-title');
+  if (titleEl && variantData) {
+    titleEl.textContent = variantData.name;
+  }
+  
+  document.body.appendChild(variantGhost);
+}
+
 // ---------- Link Entity Drag State ----------
 let draggingLinkEntity = false;
 let draggedLinkEntityData = null; // {name, id, sourceCardId}
@@ -215,6 +253,75 @@ export function selectCard(e) {
 
 // ---------- Card Dragging ----------
 export function startCardDrag(e) { 
+  // Handle variant creation with Alt + middle mouse button
+  if (e.altKey && e.button === 1) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const box = e.currentTarget; 
+    const originalId = parseInt(box.id.split('-')[1]); 
+    
+    // Start variant dragging
+    variantDragging = true;
+    variantOriginalId = originalId;
+    
+    const coords = viewport.getWorldCoords(e.clientX, e.clientY);
+    dragStartX = coords.wx;
+    dragStartY = coords.wy;
+    
+    // Create variant data but don't add to world yet
+    const original = data.byId(originalId);
+    const generateVariantName = (baseName) => {
+      const variantPrefix = `${baseName} - var `;
+      const existingVariants = data.all.filter(card => {
+        return card.name.startsWith(variantPrefix) && /^[A-Z]+$/.test(card.name.substring(variantPrefix.length));
+      });
+      
+      const existingSuffixes = existingVariants.map(card => {
+        return card.name.substring(variantPrefix.length);
+      });
+      
+      const generateSuffix = (index) => {
+        let suffix = '';
+        let temp = index;
+        do {
+          suffix = String.fromCharCode(65 + (temp % 26)) + suffix;
+          temp = Math.floor(temp / 26) - 1;
+        } while (temp >= 0);
+        return suffix;
+      };
+      
+      let index = 0;
+      let suffix = generateSuffix(index);
+      while (existingSuffixes.includes(suffix)) {
+        index++;
+        suffix = generateSuffix(index);
+      }
+      
+      return `${baseName} - var ${suffix}`;
+    };
+    
+    variantData = {
+      name: generateVariantName(original.name),
+      type: original.type,
+      content: original.content,
+      attributes: original.attributes.map(attr => ({
+        key: attr.key,
+        value: attr.value,
+        kind: attr.kind,
+        entityId: attr.entityId,
+        entityIds: attr.entityIds ? [...attr.entityIds] : undefined
+      })),
+      representations: [...original.representations]
+    };
+    
+    // Create visual ghost element
+    createVariantGhost(box, e.clientX, e.clientY);
+    
+    console.log(`[Variant] Starting drag for variant "${variantData.name}" from "${original.name}"`);
+    return;
+  }
+  
   if (e.button !== 0) return; 
   if (e.target.closest('.card-text') || e.target.tagName === 'INPUT') return; 
   // Prevent card drag when clicking on link items
@@ -300,6 +407,13 @@ document.addEventListener('mousemove', e => {
       }
     }
     
+    return; // Don't process other drag operations
+  }
+  
+  // Handle variant dragging
+  if (variantDragging && variantGhost) {
+    variantGhost.style.left = (e.clientX - 170) + 'px';
+    variantGhost.style.top = (e.clientY - 110) + 'px';
     return; // Don't process other drag operations
   }
   
@@ -464,6 +578,57 @@ document.addEventListener('mouseup', e => {
     
     draggingLinkEntity = false;
     draggedLinkEntityData = null;
+    return;
+  }
+  
+  // Handle variant placement
+  if (variantDragging) {
+    if (variantGhost) {
+      const coords = viewport.getWorldCoords(e.clientX, e.clientY);
+      
+      // Create the actual variant
+      const variant = data.createVariant(variantOriginalId, coords.wx, coords.wy);
+      
+      if (variant) {
+        console.log(`[Variant] Placed variant "${variant.name}" from "${data.byId(variantOriginalId).name}" at (${Math.round(coords.wx)}, ${Math.round(coords.wy)})`);
+        
+        // Add to current layout
+        const lay = viewport.ensureLayout(viewport.currentPlane);
+        const newCard = {refId: variant.id, x: coords.wx, y: coords.wy};
+        lay.cards.push(newCard);
+        
+        // Add to clones for immediate visibility
+        viewport.pushClone({refId: variant.id, x: coords.wx, y: coords.wy});
+        
+        // Render and hydrate the new variant 
+        render.renderCard(newCard);
+        hydrateCard(variant.id);
+        
+        // Simple highlight effect without position changes
+        const variantEl = document.getElementById('card-' + variant.id);
+        if (variantEl) {
+          // Brief highlight to show it was created
+          variantEl.style.boxShadow = '0 0 30px rgba(0,255,136,0.8)';
+          variantEl.style.zIndex = '1000';
+          
+          setTimeout(() => {
+            variantEl.style.boxShadow = '';
+            variantEl.style.zIndex = '';
+          }, 600);
+        }
+        
+        viewport.updateHUD();
+      }
+      
+      // Clean up ghost
+      variantGhost.remove();
+      variantGhost = null;
+    }
+    
+    // Reset variant dragging state
+    variantDragging = false;
+    variantOriginalId = null;
+    variantData = null;
     return;
   }
   
