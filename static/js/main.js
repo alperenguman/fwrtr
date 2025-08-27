@@ -17,6 +17,17 @@ window.createCard = function(x, y) {
   
   const card = data.createCard(x, y);
   
+  // If we're in a subplane, make the new card inherit from the current plane entity
+  if (viewport.currentPlane !== null) {
+    const parentCard = data.byId(viewport.currentPlane);
+    if (parentCard) {
+      // Set up parent-child relationship
+      data.contain(viewport.currentPlane, card.id);
+      
+      console.log(`[createCard] Created entity ${card.id} (${card.name}) inheriting from ${viewport.currentPlane} (${parentCard.name}) in subplane`);
+    }
+  }
+  
   const lay = viewport.ensureLayout(viewport.currentPlane);
   const newCard = {refId: card.id, x, y};
   lay.cards.push(newCard);
