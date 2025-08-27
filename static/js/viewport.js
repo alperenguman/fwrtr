@@ -8,6 +8,9 @@ export let viewX = 0, viewY = 0, zoom = 1, depth = 0;
 export let currentPlane = null; // null = root
 export let clones = []; // [{refId,x,y}] - visible card positions
 
+// ---------- Timeline State (simple) ----------
+export let isTimelineMode = false;
+
 // ---------- Layout Management ----------
 export const layouts = new Map(); // key('ROOT' or id) -> {viewX,viewY,cards:[]}
 const keyOf = pid => pid == null ? 'ROOT' : String(pid);
@@ -234,6 +237,11 @@ export function resetView() {
   setViewport(0, 0, 1); 
   updateView(); 
   updateHUD(); 
+}
+
+// Simple timeline mode setter
+export function setTimelineMode(enabled) {
+  isTimelineMode = enabled;
 }
 
 // ---------- Initial Layout Setup ----------

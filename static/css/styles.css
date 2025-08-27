@@ -504,5 +504,24 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,Seg
 .tool-btn:hover{background:#1b1b1b;color:#fff}
 .coordinates{position:fixed;bottom:20px;right:20px;background:#0a0a0a;padding:8px 12px;border:1px solid #1b1b1b;font-size:11px;color:#888}
 
+/* Plane Indicator */
+.plane-indicator{position:fixed;bottom:60px;right:20px;background:#0a0a0a;padding:4px 8px;border:1px solid #1b1b1b;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:0.5px}
+
+/* Timeline Toggle */
+.timeline-toggle{background:#141414 !important;border:1px solid #222 !important}
+.timeline-toggle.active{background:#007acc !important;color:#fff !important}
+.timeline-toggle:hover{background:#1b1b1b !important}
+.timeline-toggle.active:hover{background:#0086d9 !important}
+
+/* Timeline Plane Styles */
+.timeline-plane{background:linear-gradient(90deg,rgba(35,35,35,.12) 1px,transparent 1px),linear-gradient(rgba(35,35,35,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(0,122,204,.3) 2px,transparent 2px);background-size:50px 50px,50px 50px,100% 2px;background-position:0 0,0 0,50% 50%}
+
+/* Timeline Line */
+.timeline-line{position:fixed;left:50%;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,#007acc 0%,#00ff88 50%,#007acc 100%);z-index:5;pointer-events:none;transform:translateX(-50%)}
+
+/* Timeline Cards */
+.timeline-card{border-color:#007acc !important}
+.timeline-card.first-event{border-color:#00ff88 !important;box-shadow:0 0 20px rgba(0,255,136,0.3) !important}
+
 /* Selection */
 .selection-box{position:absolute;border:1px dashed #ff5a5a;background:rgba(255,90,90,.12);pointer-events:none;display:none;z-index:999}

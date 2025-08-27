@@ -99,12 +99,120 @@ function generateVariantName(baseName) {
   return `${baseName} - var ${suffix}`;
 }
 
-export function createVariant(originalId, x, y) {
+function generateTimelineInstanceName(baseName, timeOffset) {
+  // Timeline instance naming: "Original Name - var A - inst t+1.17.5.14.10"
+  // First check if this is already a variant (has - var X)
+  const variantPattern = / - var [A-Z]+$/;
+  let baseWithVariant = baseName;
+  
+  if (!variantPattern.test(baseName)) {
+    // Not a variant yet, need to find next variant letter
+    baseWithVariant = generateVariantName(baseName);
+  }
+  
+  return `${baseWithVariant} - inst ${timeOffset}`;
+}
+
+// Create timeline instance (attached to timeline)
+export function createTimelineInstance(originalId, timeOffset, x, y) {
+  const original = byId(originalId);
+  if (!original) return null;
+  
+  // Generate instance name
+  const instanceName = generateTimelineInstanceName(original.name, timeOffset);
+  
+  // Create new card with instance name
+  const instance = {
+    id: nextId++,
+    name: instanceName,
+    type: original.type,
+    content: original.content,
+    attributes: original.attributes.map(attr => ({
+      key: attr.key,
+      value: attr.value,
+      kind: attr.kind,
+      entityId: attr.entityId,
+      entityIds: attr.entityIds ? [...attr.entityIds] : undefined
+    })),
+    representations: [...original.representations]
+  };
+  
+  // Add timeline-specific attributes
+  instance.attributes.push({
+    key: 'timeline_offset',
+    value: timeOffset,
+    kind: 'text'
+  }, {
+    key: 'timeline_instance',
+    value: 'true',
+    kind: 'text'
+  });
+  
+  all.push(instance);
+  
+  // Set up sibling relationship - instance inherits from the same parent as original
+  const originalParents = parentsOf.get(originalId);
+  if (originalParents && originalParents.size > 0) {
+    originalParents.forEach(parentId => {
+      contain(parentId, instance.id);
+    });
+  }
+  
+  // Copy linked entities
+  const originalLinks = links.get(originalId);
+  if (originalLinks && originalLinks.size > 0) {
+    const instanceLinks = new Set(originalLinks);
+    links.set(instance.id, instanceLinks);
+    
+    originalLinks.forEach(linkedId => {
+      const backLinks = links.get(linkedId);
+      if (backLinks) {
+        backLinks.add(instance.id);
+      } else {
+        links.set(linkedId, new Set([instance.id]));
+      }
+    });
+  }
+  
+  notifyChange();
+  return instance;
+}
+
+// Check if a card is a timeline instance
+export function isTimelineInstance(cardId) {
+  const card = byId(cardId);
+  if (!card) return false;
+  
+  return card.attributes && card.attributes.some(attr => 
+    attr.key === 'timeline_instance' && attr.value === 'true'
+  );
+}
+
+// Get timeline offset from a timeline instance
+export function getTimelineOffset(cardId) {
+  const card = byId(cardId);
+  if (!card) return null;
+  
+  const offsetAttr = card.attributes && card.attributes.find(attr => 
+    attr.key === 'timeline_offset'
+  );
+  
+  return offsetAttr ? offsetAttr.value : null;
+}
+
+export function createVariant(originalId, x, y, timelineMode = false, timeOffset = null) {
   const original = byId(originalId);
   if (!original) return null;
   
   // Generate variant name
-  const variantName = generateVariantName(original.name);
+  let variantName;
+  if (timelineMode && timeOffset) {
+    // Timeline variant naming: "Original Name - var t+1.17.5.14.10"
+    variantName = generateTimelineVariantName(original.name, timeOffset);
+  } else {
+    // Regular variant naming: "Original Name - var A"
+    variantName = generateVariantName(original.name);
+  }
   
   // Create new card with variant name
   const variant = {
@@ -121,6 +229,15 @@ export function createVariant(originalId, x, y) {
     })), // Deep copy attributes with values
     representations: [...original.representations] // Copy representations
   };
+  
+  // Add timeline-specific attributes if in timeline mode
+  if (timelineMode && timeOffset) {
+    variant.attributes.push({
+      key: 'timeline_offset',
+      value: timeOffset,
+      kind: 'text'
+    });
+  }
   
   all.push(variant);
   

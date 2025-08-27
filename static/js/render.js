@@ -413,6 +413,8 @@ export function updateCardUI(cardId, focusNew = false) {
   console.log(`[updateCardUI] ====== Completed update for card ${cardId} ======\n`);
 }
 
+// Timeline rendering will be added step by step
+
 // ---------- Section Toggle ----------
 export function toggleSection(kind, id) { 
   const caret = document.getElementById(`caret-${kind}-${id}`); 

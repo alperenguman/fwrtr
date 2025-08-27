@@ -61,6 +61,52 @@ let dragGhost = null;
 // ---------- Plane Dragging ----------
 let draggingPlane = false, planeStartX = 0, planeStartY = 0;
 
+// ---------- Momentum Dragging ----------
+let momentum = { vx: 0, vy: 0, lastTime: 0, lastX: 0, lastY: 0 };
+let momentumAnimation = null;
+
+// Momentum animation with heavy resistance and smooth decay
+function startMomentumAnimation() {
+  if (momentumAnimation) {
+    cancelAnimationFrame(momentumAnimation);
+  }
+  
+  const friction = 0.92; // Heavy resistance (lower = more resistance)
+  const minVelocity = 0.1; // Stop when velocity gets too small
+  
+  function animate() {
+    // Apply friction to velocities
+    momentum.vx *= friction;
+    momentum.vy *= friction;
+    
+    // Calculate total velocity to check if we should stop
+    const totalVel = Math.sqrt(momentum.vx * momentum.vx + momentum.vy * momentum.vy);
+    
+    if (totalVel < minVelocity) {
+      // Stop animation and reset momentum
+      momentum.vx = momentum.vy = 0;
+      momentumAnimation = null;
+      return;
+    }
+    
+    // Apply momentum to viewport
+    if (viewport.isTimelineMode) {
+      // In timeline mode, only apply Y momentum
+      viewport.setViewport(viewport.viewX, viewport.viewY + momentum.vy);
+    } else {
+      // Normal mode - apply both X and Y momentum
+      viewport.setViewport(viewport.viewX + momentum.vx, viewport.viewY + momentum.vy);
+    }
+    
+    viewport.updateView();
+    
+    // Continue animation
+    momentumAnimation = requestAnimationFrame(animate);
+  }
+  
+  animate();
+}
+
 // ---------- Gallery Initialization Queue ----------
 let galleryInitQueue = new Set();
 let galleryInitTimer = null;
@@ -271,6 +317,7 @@ export function startCardDrag(e) {
     
     // Create variant data but don't add to world yet
     const original = data.byId(originalId);
+    
     const generateVariantName = (baseName) => {
       const variantPrefix = `${baseName} - var `;
       const existingVariants = data.all.filter(card => {
@@ -458,6 +505,8 @@ document.addEventListener('mousemove', e => {
     
     hover = isValidTarget ? t : null; 
     
+    // Timeline logic will be added step by step
+    
     if (hover) { 
       const r = hover.getBoundingClientRect(); 
       const hoverCardId = parseInt(hover.id.split('-')[1]);
@@ -479,9 +528,41 @@ document.addEventListener('mousemove', e => {
   
   if (draggingPlane) { 
     const dx = e.clientX - planeStartX, dy = e.clientY - planeStartY; 
-    viewport.setViewport(viewport.viewX + dx, viewport.viewY + dy); 
-    planeStartX = e.clientX; 
-    planeStartY = e.clientY; 
+    
+    // Track momentum for inertia physics
+    const currentTime = performance.now();
+    if (momentum.lastTime > 0) {
+      const dt = currentTime - momentum.lastTime;
+      if (dt > 0) {
+        momentum.vx = (e.clientX - momentum.lastX) / dt * 16.67; // Convert to pixels per frame (60fps)
+        momentum.vy = (e.clientY - momentum.lastY) / dt * 16.67;
+      }
+    }
+    momentum.lastTime = currentTime;
+    momentum.lastX = e.clientX;
+    momentum.lastY = e.clientY;
+    
+    // In timeline mode, only allow Y-axis movement (time navigation)
+    if (viewport.isTimelineMode) {
+      viewport.setViewport(viewport.viewX, viewport.viewY + dy); 
+      planeStartY = e.clientY; 
+      // Don't update planeStartX - keep X position locked
+      
+      // Update timeline offset based on Y movement (for time labels)
+      if (window.timelineOffset !== undefined) {
+        window.timelineOffset += dy * 0.01; // Scale factor for time sensitivity
+        // Update the labels with new time values
+        if (window.updateTimelineLabels) {
+          window.updateTimelineLabels();
+        }
+      }
+    } else {
+      // Normal mode - allow both X and Y movement
+      viewport.setViewport(viewport.viewX + dx, viewport.viewY + dy); 
+      planeStartX = e.clientX; 
+      planeStartY = e.clientY; 
+    }
+    
     viewport.updateView(); 
   } 
   
@@ -643,6 +724,8 @@ document.addEventListener('mouseup', e => {
       }
     });
     
+    // Timeline logic will be added step by step
+    
     if (hover && dragIds.length > 0) { 
       const targetId = parseInt(hover.id.split('-')[1]); 
       const sourceId = dragIds[0]; // Use first selected card
@@ -692,7 +775,9 @@ document.addEventListener('mouseup', e => {
         render.updateCardUI(targetId); 
       }
       
-      hover.classList.remove('drop-target', 'link-zone', 'contain-zone'); 
+      if (hover && hover.classList) {
+        hover.classList.remove('drop-target', 'link-zone', 'contain-zone');
+      }
       hover = null; 
     }
     
@@ -710,7 +795,18 @@ document.addEventListener('mouseup', e => {
     const plane = document.getElementById('plane');
     plane.classList.remove('dragging'); 
     plane.style.cursor = 'grab'; 
-    viewport.saveCurrentLayout(); 
+    viewport.saveCurrentLayout();
+    
+    // Start momentum animation if there's enough velocity
+    const minVelocity = 0.5; // Minimum velocity to trigger momentum
+    const totalVel = Math.sqrt(momentum.vx * momentum.vx + momentum.vy * momentum.vy);
+    
+    if (totalVel > minVelocity) {
+      startMomentumAnimation();
+    } else {
+      // Reset momentum
+      momentum.vx = momentum.vy = 0;
+    }
   } 
 });
 
@@ -732,7 +828,17 @@ plane.addEventListener('mousedown', e => {
     plane.classList.add('dragging'); 
     plane.style.cursor = 'grabbing'; 
     planeStartX = e.clientX; 
-    planeStartY = e.clientY; 
+    planeStartY = e.clientY;
+    
+    // Stop any existing momentum animation and reset momentum tracking
+    if (momentumAnimation) {
+      cancelAnimationFrame(momentumAnimation);
+      momentumAnimation = null;
+    }
+    momentum.vx = momentum.vy = 0;
+    momentum.lastTime = performance.now();
+    momentum.lastX = e.clientX;
+    momentum.lastY = e.clientY; 
   } 
 });
 
@@ -763,7 +869,15 @@ plane.addEventListener('wheel', e => {
     const old = viewport.zoom; 
     viewport.setViewport(undefined, undefined, nz); 
     
-    if (hovered && viewport.zoom >= 3 && old < 3) { 
+    // Check for zoom-out exit from timeline mode
+    if (viewport.isTimelineMode && viewport.zoom <= 0.3 && old > 0.3) {
+      // Exit timeline mode and return to ideal plane
+      window.togglePlaneMode(); // This will handle switching back to ideal mode
+      console.log('[Timeline] Exited timeline mode via zoom out');
+      return;
+    }
+    
+    if (hovered && viewport.zoom >= 3 && old < 3 && !viewport.isTimelineMode) { 
       const id = parseInt(hovered.id.split('-')[1]); 
       viewport.setViewport(undefined, undefined, 1); 
       viewport.enter(id); 
@@ -777,15 +891,38 @@ plane.addEventListener('wheel', e => {
         setTimeout(() => viewport.focusOn(prev.entered), 20); 
       }
     } else { 
-      const mx = e.clientX, my = e.clientY; 
-      const wxB = (mx - viewport.viewX) / old, wyB = (my - viewport.viewY) / old; 
-      const wxA = (mx - viewport.viewX) / viewport.zoom, wyA = (my - viewport.viewY) / viewport.zoom; 
-      viewport.setViewport(
-        viewport.viewX + (wxA - wxB) * viewport.zoom,
-        viewport.viewY + (wyA - wyB) * viewport.zoom
-      ); 
+      if (viewport.isTimelineMode) {
+        // In timeline mode, only zoom on Y-axis (time), keep X centered on timeline
+        const mx = window.innerWidth / 2; // Always use screen center for X
+        const my = e.clientY; 
+        
+        const wxB = (mx - viewport.viewX) / old;
+        const wyB = (my - viewport.viewY) / old;
+        const wxA = (mx - viewport.viewX) / viewport.zoom;
+        const wyA = (my - viewport.viewY) / viewport.zoom;
+        
+        viewport.setViewport(
+          viewport.viewX + (wxA - wxB) * viewport.zoom, // Keep timeline centered
+          viewport.viewY + (wyA - wyB) * viewport.zoom  // Zoom focus on Y-axis
+        ); 
+      } else {
+        // Normal mode - zoom to both X and Y pointer position
+        const mx = e.clientX, my = e.clientY; 
+        const wxB = (mx - viewport.viewX) / old, wyB = (my - viewport.viewY) / old; 
+        const wxA = (mx - viewport.viewX) / viewport.zoom, wyA = (my - viewport.viewY) / viewport.zoom; 
+        viewport.setViewport(
+          viewport.viewX + (wxA - wxB) * viewport.zoom,
+          viewport.viewY + (wyA - wyB) * viewport.zoom
+        ); 
+      }
+      
       viewport.updateView(); 
-      viewport.updateHUD(); 
+      viewport.updateHUD();
+      
+      // Update timeline labels when zoom changes in timeline mode
+      if (viewport.isTimelineMode && window.updateTimelineLabels) {
+        window.updateTimelineLabels();
+      } 
     } 
   } 
 }, {passive: false});
