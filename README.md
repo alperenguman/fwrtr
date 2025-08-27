@@ -1,4 +1,4 @@
-<img src="static/logo.png" width="448">
+<img src="static/logo.png" width="401">
 
 # Fractal Wrtr
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
