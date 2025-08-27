@@ -228,54 +228,202 @@ function showTimelineLine() {
   console.log('[Timeline] Timeline line added');
 }
 
-// Timeline time offset (changes with drag, not zoom)
-let timelineOffset = 0;
+// Timeline time system
+let timelineOffset = 0; // Time offset from baseline in milliseconds
+let baselineDateTime = new Date('2025-08-26T23:52:00'); // User-settable baseline
+let isDateTimeEditing = false;
+
 // Make it globally accessible with getter/setter
 Object.defineProperty(window, 'timelineOffset', {
   get: function() { return timelineOffset; },
   set: function(value) { timelineOffset = value; }
 });
 window.updateTimelineLabels = function() { if (viewport.isTimelineMode) updateTimelineLabels(); };
+window.getTimeResolution = getTimeResolution;
 
-// Get time resolution and format based on zoom level
+// Get time resolution and format based on zoom level (returns milliseconds)
 function getTimeResolution(zoom) {
-  if (zoom >= 2.0) return { unit: 'minutes', step: 30, format: 'minutes' };
-  if (zoom >= 1.0) return { unit: 'hours', step: 2, format: 'hours' };
-  if (zoom >= 0.5) return { unit: 'hours', step: 12, format: 'hours' };
-  if (zoom >= 0.3) return { unit: 'days', step: 2, format: 'days' };
-  if (zoom >= 0.1) return { unit: 'days', step: 7, format: 'days' };
-  return { unit: 'months', step: 2, format: 'months' };
+  if (zoom >= 2.0) return { unit: 'minutes', step: 30 * 60 * 1000, format: 'minutes' }; // 30 minutes
+  if (zoom >= 1.0) return { unit: 'hours', step: 2 * 60 * 60 * 1000, format: 'hours' }; // 2 hours
+  if (zoom >= 0.5) return { unit: 'hours', step: 12 * 60 * 60 * 1000, format: 'hours' }; // 12 hours
+  if (zoom >= 0.3) return { unit: 'days', step: 2 * 24 * 60 * 60 * 1000, format: 'days' }; // 2 days
+  if (zoom >= 0.15) return { unit: 'days', step: 7 * 24 * 60 * 60 * 1000, format: 'days' }; // 7 days
+  if (zoom >= 0.08) return { unit: 'days', step: 30 * 24 * 60 * 60 * 1000, format: 'days' }; // 30 days
+  if (zoom >= 0.04) return { unit: 'months', step: 3 * 30 * 24 * 60 * 60 * 1000, format: 'months' }; // 3 months
+  if (zoom >= 0.02) return { unit: 'months', step: 12 * 30 * 24 * 60 * 60 * 1000, format: 'months' }; // 12 months
+  return { unit: 'years', step: 5 * 365 * 24 * 60 * 60 * 1000, format: 'years' }; // 5 years
 }
 
-// Generate time notation (t+5.1.12.12...)
-function generateTimeNotation(offsetValue, unit) {
-  const baseTime = Math.abs(offsetValue);
-  const sign = offsetValue >= 0 ? '+' : '-';
+// Format date/time for display
+function formatDateTime(date) {
+  const month = (date.getMonth() + 1).toString();
+  const day = date.getDate().toString();
+  const year = date.getFullYear();
+  let hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
   
-  // Generate semi-random but consistent decimal places
-  const hash = Math.abs(Math.floor(baseTime * 7.13) % 100);
-  const decimal1 = Math.floor(hash / 10);
-  const decimal2 = hash % 10;
-  const decimal3 = Math.floor((baseTime * 3.17) % 10);
-  const decimal4 = Math.floor((baseTime * 11.23) % 10);
+  return `${month}/${day}/${year} ${hours}:${minutes}${ampm}`;
+}
+
+// Convert milliseconds to human readable format
+function formatTimeDelta(milliseconds, unit) {
+  const absMs = Math.abs(milliseconds);
+  const sign = milliseconds < 0 ? '-' : '+';
   
-  return `t${sign}${Math.floor(baseTime)}.${decimal1}.${decimal2}.${decimal3}.${decimal4}`;
+  let value, unitName;
+  
+  switch (unit) {
+    case 'minutes':
+      value = Math.round(absMs / (60 * 1000));
+      unitName = value === 1 ? 'minute' : 'minutes';
+      break;
+    case 'hours':
+      value = Math.round(absMs / (60 * 60 * 1000));
+      unitName = value === 1 ? 'hour' : 'hours';
+      break;
+    case 'days':
+      value = Math.round(absMs / (24 * 60 * 60 * 1000));
+      unitName = value === 1 ? 'day' : 'days';
+      break;
+    case 'months':
+      value = Math.round(absMs / (30 * 24 * 60 * 60 * 1000));
+      unitName = value === 1 ? 'month' : 'months';
+      break;
+    case 'years':
+      value = Math.round(absMs / (365 * 24 * 60 * 60 * 1000));
+      unitName = value === 1 ? 'year' : 'years';
+      break;
+    default:
+      value = Math.round(absMs / (60 * 60 * 1000));
+      unitName = value === 1 ? 'hour' : 'hours';
+  }
+  
+  return `${sign}${value} ${unitName}`;
 }
 
 function getPastTimeLabel() {
   const resolution = getTimeResolution(viewport.zoom);
-  const offset = Math.round((-resolution.step - timelineOffset) * 10) / 10; // Round to 1 decimal
-  return `${offset} ${resolution.format}`;
+  return formatTimeDelta(-resolution.step, resolution.unit);
 }
 
 function getNowTimeLabel() {
-  return generateTimeNotation(timelineOffset, 'now');
+  const currentTime = new Date(baselineDateTime.getTime() + timelineOffset);
+  return formatDateTime(currentTime);
 }
 
 function getFutureTimeLabel() {
   const resolution = getTimeResolution(viewport.zoom);
-  const offset = Math.round((resolution.step - timelineOffset) * 10) / 10; // Round to 1 decimal
-  return `+${offset} ${resolution.format}`;
+  return formatTimeDelta(resolution.step, resolution.unit);
+}
+
+// Start editing the baseline date/time
+function startDateTimeEdit(labelElement) {
+  if (isDateTimeEditing) return;
+  
+  isDateTimeEditing = true;
+  const currentDateTime = formatDateTime(new Date(baselineDateTime.getTime() + timelineOffset));
+  
+  // Create input field
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentDateTime;
+  input.style.cssText = `
+    position: fixed;
+    left: calc(50% + 20px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1a1a1a;
+    border: 1px solid #00ff88;
+    color: #fff;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 2px 4px;
+    width: 140px;
+    z-index: 1000;
+  `;
+  
+  // Hide original label
+  labelElement.style.display = 'none';
+  
+  // Add input to document
+  document.body.appendChild(input);
+  input.focus();
+  input.select();
+  
+  // Save function
+  const saveDateTime = () => {
+    const inputValue = input.value.trim();
+    if (inputValue) {
+      // Try to parse the input
+      const parsedDate = parseDateTime(inputValue);
+      if (parsedDate) {
+        // Update baseline to make the current timeline position match the entered time
+        const currentTime = new Date(baselineDateTime.getTime() + timelineOffset);
+        const timeDiff = parsedDate.getTime() - currentTime.getTime();
+        baselineDateTime = new Date(baselineDateTime.getTime() + timeDiff);
+        
+        console.log('[Timeline] Updated baseline date/time to:', formatDateTime(baselineDateTime));
+        
+        // Update all timeline labels
+        updateTimelineLabels();
+      } else {
+        console.warn('[Timeline] Failed to parse date/time:', inputValue);
+      }
+    }
+    
+    // Cleanup
+    input.remove();
+    labelElement.style.display = '';
+    isDateTimeEditing = false;
+  };
+  
+  // Handle input events
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveDateTime();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      input.remove();
+      labelElement.style.display = '';
+      isDateTimeEditing = false;
+    }
+  });
+  
+  input.addEventListener('blur', () => {
+    saveDateTime();
+  });
+}
+
+// Parse date/time string (supports various formats)
+function parseDateTime(dateTimeStr) {
+  // Try common formats
+  const formats = [
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(AM|PM)$/i,
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/,
+  ];
+  
+  for (const format of formats) {
+    const match = dateTimeStr.match(format);
+    if (match) {
+      const [, month, day, year, hours, minutes, ampm] = match;
+      let hour24 = parseInt(hours);
+      
+      if (ampm) {
+        if (ampm.toUpperCase() === 'PM' && hour24 !== 12) hour24 += 12;
+        if (ampm.toUpperCase() === 'AM' && hour24 === 12) hour24 = 0;
+      }
+      
+      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), hour24, parseInt(minutes));
+    }
+  }
+  
+  // Try built-in Date parsing as fallback
+  const fallbackDate = new Date(dateTimeStr);
+  return isNaN(fallbackDate.getTime()) ? null : fallbackDate;
 }
 
 // Update existing timeline labels with current values
@@ -359,9 +507,29 @@ function showTimelineLabels() {
     font-weight: normal;
     font-family: monospace;
     z-index: 1;
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: pointer;
     text-shadow: none;
   `;
+  
+  // Add double-click editing functionality
+  let clickCount = 0;
+  let clickTimer = null;
+  
+  nowTimeLabel.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clickCount++;
+    
+    if (clickCount === 1) {
+      clickTimer = setTimeout(() => {
+        clickCount = 0;
+      }, 300);
+    } else if (clickCount === 2) {
+      clearTimeout(clickTimer);
+      clickCount = 0;
+      startDateTimeEdit(nowTimeLabel);
+    }
+  });
   
   // Create Future label (bottom left of timeline)
   const futureLabel = document.createElement('div');

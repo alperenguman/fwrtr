@@ -113,13 +113,15 @@ function generateTimelineInstanceName(baseName, timeOffset) {
   return `${baseWithVariant} - inst ${timeOffset}`;
 }
 
-// Create timeline instance (attached to timeline)
-export function createTimelineInstance(originalId, timeOffset, x, y) {
+
+// Create timeline instance (attached to timeline) 
+export function createTimelineInstance(originalId, timeOffset, x, y, type = 'Instance') {
   const original = byId(originalId);
   if (!original) return null;
   
-  // Generate instance name
-  const instanceName = generateTimelineInstanceName(original.name, timeOffset);
+  // Generate instance name with type suffix
+  const baseName = generateTimelineInstanceName(original.name, timeOffset);
+  const instanceName = `${baseName} - ${type}`;
   
   // Create new card with instance name
   const instance = {

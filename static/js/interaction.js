@@ -65,6 +65,7 @@ let draggingPlane = false, planeStartX = 0, planeStartY = 0;
 let momentum = { vx: 0, vy: 0, lastTime: 0, lastX: 0, lastY: 0 };
 let momentumAnimation = null;
 
+
 // Momentum animation with heavy resistance and smooth decay
 function startMomentumAnimation() {
   if (momentumAnimation) {
@@ -93,6 +94,14 @@ function startMomentumAnimation() {
     if (viewport.isTimelineMode) {
       // In timeline mode, only apply Y momentum
       viewport.setViewport(viewport.viewX, viewport.viewY + momentum.vy);
+      
+      // Continue updating timeline offset during momentum
+      if (window.timelineOffset !== undefined && Math.abs(momentum.vy) > 0.1) {
+        window.timelineOffset -= momentum.vy * 60000; // Same scaling as drag
+        if (window.updateTimelineLabels) {
+          window.updateTimelineLabels();
+        }
+      }
     } else {
       // Normal mode - apply both X and Y momentum
       viewport.setViewport(viewport.viewX + momentum.vx, viewport.viewY + momentum.vy);
@@ -484,6 +493,7 @@ document.addEventListener('mousemove', e => {
       } 
     }); 
     
+    
     // Better hover detection with link zone
     // Temporarily hide dragged cards to detect what's underneath
     const draggedElements = dragIds.map(id => document.getElementById('card-' + id)).filter(Boolean);
@@ -549,8 +559,10 @@ document.addEventListener('mousemove', e => {
       // Don't update planeStartX - keep X position locked
       
       // Update timeline offset based on Y movement (for time labels)
+      // Up = more negative (past), Down = more positive (future)
       if (window.timelineOffset !== undefined) {
-        window.timelineOffset += dy * 0.01; // Scale factor for time sensitivity
+        // Scale factor: 1 pixel = 1 minute (60000 milliseconds)
+        window.timelineOffset -= dy * 60000; // Invert direction: up is past, down is future
         // Update the labels with new time values
         if (window.updateTimelineLabels) {
           window.updateTimelineLabels();
@@ -724,7 +736,6 @@ document.addEventListener('mouseup', e => {
       }
     });
     
-    // Timeline logic will be added step by step
     
     if (hover && dragIds.length > 0) { 
       const targetId = parseInt(hover.id.split('-')[1]); 
@@ -862,7 +873,7 @@ function updateSelection(left, top, w, h) {
 plane.addEventListener('wheel', e => { 
   e.preventDefault(); 
   const f = e.deltaY < 0 ? 1.1 : 0.9; 
-  const nz = Math.max(.1, Math.min(10, viewport.zoom * f)); 
+  const nz = Math.max(.01, Math.min(10, viewport.zoom * f)); 
   const hovered = document.elementFromPoint(e.clientX, e.clientY)?.closest('.card'); 
   
   if (nz !== viewport.zoom) { 
@@ -870,7 +881,7 @@ plane.addEventListener('wheel', e => {
     viewport.setViewport(undefined, undefined, nz); 
     
     // Check for zoom-out exit from timeline mode
-    if (viewport.isTimelineMode && viewport.zoom <= 0.3 && old > 0.3) {
+    if (viewport.isTimelineMode && viewport.zoom <= 0.05 && old > 0.05) {
       // Exit timeline mode and return to ideal plane
       window.togglePlaneMode(); // This will handle switching back to ideal mode
       console.log('[Timeline] Exited timeline mode via zoom out');
