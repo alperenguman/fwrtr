@@ -669,6 +669,130 @@ export function hydrateCard(cardId) {
     t._eventsBound = true;
   }
   
+  // Title editing with double-click
+  const titleElement = root.querySelector('.card-title');
+  if (titleElement && !titleElement._titleEventsBound) {
+    let clickCount = 0;
+    let clickTimer = null;
+    
+    titleElement.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clickCount++;
+      
+      if (clickCount === 1) {
+        clickTimer = setTimeout(() => {
+          clickCount = 0;
+        }, 300); // Reset after 300ms if no second click
+      } else if (clickCount === 2) {
+        clearTimeout(clickTimer);
+        clickCount = 0;
+        
+        // Start editing
+        const currentName = card.name;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentName;
+        input.className = 'card-title-edit';
+        
+        // Get computed styles from the original title
+        const titleStyles = getComputedStyle(titleElement);
+        input.style.cssText = `
+          background: transparent;
+          border: none;
+          outline: none;
+          padding: 0;
+          margin: 0;
+          font-size: ${titleStyles.fontSize};
+          font-weight: ${titleStyles.fontWeight};
+          font-family: ${titleStyles.fontFamily};
+          color: ${titleStyles.color};
+          width: 100%;
+          box-sizing: border-box;
+        `;
+        
+        // Replace title with input
+        titleElement.style.display = 'none';
+        titleElement.parentNode.insertBefore(input, titleElement);
+        
+        // Focus and position cursor at end
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        
+        // Save function
+        const saveTitle = () => {
+          const newName = input.value.trim();
+          if (newName && newName !== currentName) {
+            card.name = newName;
+            titleElement.textContent = newName;
+            
+            // Trigger persistence
+            if (window.persistence) window.persistence.markDirty();
+            
+            // Update all cards that reference this entity
+            data.all.forEach(otherCard => {
+              let needsUpdate = false;
+              
+              // Check if this card is linked to the renamed entity
+              const links = data.links.get(otherCard.id);
+              if (links && links.has(cardId)) {
+                needsUpdate = true;
+              }
+              
+              // Check if any attributes reference this entity
+              if (otherCard.attributes) {
+                otherCard.attributes.forEach(attr => {
+                  if (attr.kind === 'entity' && attr.entityId === cardId) {
+                    // Update the display value for entity attributes
+                    attr.value = newName;
+                    needsUpdate = true;
+                  } else if (attr.kind === 'entityList' && attr.entityIds && attr.entityIds.includes(cardId)) {
+                    // Update entity list display value
+                    const entityNames = attr.entityIds.map(id => data.byId(id)?.name || '').filter(Boolean);
+                    attr.value = entityNames.join(', ');
+                    needsUpdate = true;
+                  }
+                });
+              }
+              
+              // Check if content contains references to this entity (linkified text)
+              if (otherCard.content && otherCard.content.includes(currentName)) {
+                needsUpdate = true;
+              }
+              
+              // Update the card's UI if it references the renamed entity
+              if (needsUpdate) {
+                render.updateCardUI(otherCard.id);
+              }
+            });
+            
+            // Also update this card's own UI in case it has self-references
+            render.updateCardUI(cardId);
+          }
+          
+          // Restore title display
+          input.remove();
+          titleElement.style.display = '';
+        };
+        
+        // Handle input events
+        input.addEventListener('blur', saveTitle);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            saveTitle();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            // Cancel editing
+            input.remove();
+            titleElement.style.display = '';
+          }
+        });
+      }
+    });
+    
+    titleElement._titleEventsBound = true;
+  }
+  
   // Attributes handling with custom dropdown
   const attrList = root.querySelector('#attrs-' + cardId);
   
