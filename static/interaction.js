@@ -598,7 +598,7 @@ plane.addEventListener('wheel', e => {
     const old = viewport.zoom; 
     viewport.setViewport(undefined, undefined, nz); 
     
-    if (hovered && viewport.zoom >= 3 && old < 3 && viewport.depth === 0) { 
+    if (hovered && viewport.zoom >= 3 && old < 3) { 
       const id = parseInt(hovered.id.split('-')[1]); 
       viewport.setViewport(undefined, undefined, 1); 
       viewport.enter(id); 
