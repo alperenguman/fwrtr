@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fractal Wrtr · Cards · Inheritance & Linking</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
 </head>
 <body>
   <div class="plane-container" id="plane"></div>
@@ -24,9 +24,9 @@
   <div id="planeLabel"></div>
 
   <!-- Load modules - note the type="module" -->
-  <script type="module" src="{{ url_for('static', filename='persistence.js') }}"></script>
-  <script type="module" src="{{ url_for('static', filename='main.js') }}"></script>
-  <script src="{{ url_for('static', filename='attrPagination.js') }}"></script>
-  <script src="{{ url_for('static', filename='textScroll.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/persistence.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/attrPagination.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/textScroll.js') }}"></script>
 </body>
 </html>
