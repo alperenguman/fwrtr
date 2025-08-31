@@ -869,9 +869,25 @@ function updateSelection(left, top, w, h) {
   }); 
 }
 
-// ---------- Wheel Zoom ----------
+// ---------- Wheel Zoom / Temporal Navigation ----------
 plane.addEventListener('wheel', e => { 
   e.preventDefault(); 
+  
+  // TEMPORAL MODE: Handle time navigation
+  if (viewport.isTimelineMode) {
+    if (e.shiftKey) {
+      // Shift+scroll changes time resolution
+      const direction = e.deltaY < 0 ? 'up' : 'down';
+      window.changeTimeResolution(direction);
+    } else {
+      // Regular scroll navigates time (up=forward, down=backward)
+      const direction = e.deltaY < 0 ? 'forward' : 'backward';
+      window.navigateTime(direction);
+    }
+    return;
+  }
+  
+  // NORMAL MODE: Handle zoom
   const f = e.deltaY < 0 ? 1.1 : 0.9; 
   const nz = Math.max(.01, Math.min(10, viewport.zoom * f)); 
   const hovered = document.elementFromPoint(e.clientX, e.clientY)?.closest('.card'); 
