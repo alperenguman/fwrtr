@@ -92,8 +92,8 @@ function startMomentumAnimation() {
     
     // Apply momentum to viewport
     if (viewport.isTimelineMode) {
-      // In timeline mode, only apply Y momentum
-      viewport.setViewport(viewport.viewX, viewport.viewY + momentum.vy);
+      // In temporal mode, allow full XY momentum
+      viewport.setViewport(viewport.viewX + momentum.vx, viewport.viewY + momentum.vy);
       
       // Continue updating timeline offset during momentum
       if (window.timelineOffset !== undefined && Math.abs(momentum.vy) > 0.1) {
@@ -552,11 +552,11 @@ document.addEventListener('mousemove', e => {
     momentum.lastX = e.clientX;
     momentum.lastY = e.clientY;
     
-    // In timeline mode, only allow Y-axis movement (time navigation)
+    // In temporal mode, allow full XY movement
     if (viewport.isTimelineMode) {
-      viewport.setViewport(viewport.viewX, viewport.viewY + dy); 
-      planeStartY = e.clientY; 
-      // Don't update planeStartX - keep X position locked
+      viewport.setViewport(viewport.viewX + dx, viewport.viewY + dy); 
+      planeStartX = e.clientX; 
+      planeStartY = e.clientY;
       
       // Update timeline offset based on Y movement (for time labels)
       // Up = more negative (past), Down = more positive (future)
@@ -903,8 +903,8 @@ plane.addEventListener('wheel', e => {
       }
     } else { 
       if (viewport.isTimelineMode) {
-        // In timeline mode, only zoom on Y-axis (time), keep X centered on timeline
-        const mx = window.innerWidth / 2; // Always use screen center for X
+        // In temporal mode, allow normal zoom behavior
+        const mx = e.clientX;
         const my = e.clientY; 
         
         const wxB = (mx - viewport.viewX) / old;

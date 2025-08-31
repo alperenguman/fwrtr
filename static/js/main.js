@@ -87,9 +87,9 @@ window.togglePlaneMode = function() {
   const indicator = document.getElementById('planeIndicator');
   const toggle = document.getElementById('timelineToggle');
   
-  if (toggle && toggle.textContent === 'Timeline') {
-    // Switch to timeline mode
-    if (indicator) indicator.textContent = 'Timeline Plane';
+  if (toggle && toggle.textContent === 'Temporal') {
+    // Switch to temporal mode
+    if (indicator) indicator.textContent = 'Temporal Flow';
     toggle.textContent = 'Ideal';
     toggle.classList.add('active');
     
@@ -102,17 +102,19 @@ window.togglePlaneMode = function() {
       clones: viewport.clones.map(clone => ({...clone})) // Deep copy current clones
     };
     
-    // Set timeline mode and center viewport on timeline (X=0)
+    // Set temporal mode - full freedom of movement
     viewport.setTimelineMode(true);
-    viewport.setViewport(window.innerWidth / 2, viewport.viewY, viewport.zoom); // Center X on timeline
-    renderTimelineView();
-    showTimelineLine();
     
-    console.log('[Timeline] Switched to Timeline Plane');
+    // Clear the plane - no cards until instantiation feature is implemented
+    const plane = document.getElementById('plane');
+    plane.innerHTML = '';
+    viewport.setClones([]);
+    
+    console.log('[Temporal] Switched to Temporal Flow');
   } else if (toggle) {
     // Switch back to ideal mode  
     if (indicator) indicator.textContent = 'Ideal Plane';
-    toggle.textContent = 'Timeline';
+    toggle.textContent = 'Temporal';
     toggle.classList.remove('active');
     
     // Restore original layout if it exists
@@ -128,9 +130,8 @@ window.togglePlaneMode = function() {
     // Set ideal mode and re-render
     viewport.setTimelineMode(false);
     render.renderPlane(viewport.currentPlane);
-    hideTimelineLine();
     
-    console.log('[Timeline] Switched to Ideal Plane');
+    console.log('[Temporal] Switched to Ideal Plane');
   }
 };
 
