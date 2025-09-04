@@ -1,4 +1,6 @@
 // ---------- Temporal Flow System ----------
+import * as viewport from './viewport.js';
+
 // State variables
 let currentTime = 0; // Current time in seconds
 let timeResolution = 2; // Index into time resolutions array
@@ -338,7 +340,7 @@ function updateTemporalTimeline() {
 
 // Navigate time (called from scroll events)
 export function navigateTime(direction) {
-  if (!window.viewport.isTimelineMode) return;
+  if (!viewport.isTimelineMode) return;
   
   const resolution = TIME_RESOLUTIONS[timeResolution];
   if (direction === 'forward') {
@@ -353,7 +355,7 @@ export function navigateTime(direction) {
 
 // Change time resolution (called from shift+scroll)
 export function changeTimeResolution(direction) {
-  if (!window.viewport.isTimelineMode) return;
+  if (!viewport.isTimelineMode) return;
   
   if (direction === 'up' && timeResolution < TIME_RESOLUTIONS.length - 1) {
     timeResolution++;
@@ -367,7 +369,7 @@ export function changeTimeResolution(direction) {
 
 // Toggle time playback
 export function toggleTimePlayback() {
-  if (!window.viewport.isTimelineMode) return;
+  if (!viewport.isTimelineMode) return;
   
   isPlaying = !isPlaying;
   
