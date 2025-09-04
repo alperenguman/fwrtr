@@ -4,6 +4,7 @@
 import * as data from './data.js';
 import * as viewport from './viewport.js';
 import * as render from './render.js';
+import * as temporal from './temporal.js';
 
 // ---------- Selection State ----------
 let selected = new Set();
@@ -878,11 +879,11 @@ plane.addEventListener('wheel', e => {
     if (e.shiftKey) {
       // Shift+scroll changes time resolution
       const direction = e.deltaY < 0 ? 'up' : 'down';
-      window.changeTimeResolution(direction);
+      temporal.changeTimeResolution(direction);
     } else {
       // Regular scroll navigates time (up=forward, down=backward)
       const direction = e.deltaY < 0 ? 'forward' : 'backward';
-      window.navigateTime(direction);
+      temporal.navigateTime(direction);
     }
     return;
   }
